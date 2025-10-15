@@ -1,8 +1,8 @@
-# 🧵 StoryWeave
+# 🧵 ThreadSeed
 
 **Collaborative storytelling that brings Reddit communities together**
 
-StoryWeave transforms any subreddit into a collaborative storytelling engine where users contribute one sentence at a time to build epic narratives together. With community voting and branching storylines, it creates unique content that belongs to the entire community.
+ThreadSeed transforms any subreddit into a collaborative storytelling engine where users contribute one sentence at a time to build epic narratives together. With community voting and branching storylines, it creates unique content that belongs to the entire community.
 
 ## 🎯 Hackathon Categories
 
