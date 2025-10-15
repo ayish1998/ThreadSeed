@@ -1,0 +1,24 @@
+{
+  "name": "storyweave",
+  "version": "1.0.0",
+  "description": "Collaborative storytelling game for Reddit communities",
+  "main": "src/main.tsx",
+  "scripts": {
+    "build": "devvit build",
+    "dev": "devvit dev",
+    "upload": "devvit upload",
+    "test": "vitest --run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@devvit/kit": "^0.10.0",
+    "@devvit/protos": "^0.10.0",
+    "@devvit/public-api": "^0.10.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "dependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  }
+}
