@@ -1,3 +1,4 @@
+// src/components/StoryList.tsx
 import { Context, Devvit, useState, useAsync } from '@devvit/public-api';
 import { Story } from '../types/story.js';
 import { StoryService } from '../services/storyService.js';
@@ -13,18 +14,22 @@ export const StoryList: Devvit.BlockComponent<StoryListProps> = ({
   userData, 
   onSelectStory 
 }) => {
+  console.log(`[StoryList] Rendering for r/${userData.subreddit.name}`);
+  
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newStoryTitle, setNewStoryTitle] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
   const storyService = new StoryService(context);
 
-  // Load existing stories
-  const { data: stories, loading, error } = useAsync(async () => {
+  const { data: stories, loading } = useAsync(async () => {
+    console.log('[StoryList] Loading stories...');
     try {
-      return await storyService.getSubredditStories(userData.subreddit.name);
+      const loadedStories = await storyService.getSubredditStories(userData.subreddit.name);
+      console.log(`[StoryList] Loaded ${loadedStories.length} stories`);
+      return loadedStories;
     } catch (err) {
-      console.error('Failed to load stories:', err);
+      console.error('[StoryList] Failed to load stories:', err);
       return [];
     }
   });
@@ -32,7 +37,9 @@ export const StoryList: Devvit.BlockComponent<StoryListProps> = ({
   const handleCreateStory = async () => {
     if (!newStoryTitle.trim() || isCreating) return;
     
+    console.log(`[StoryList] Creating story: ${newStoryTitle}`);
     setIsCreating(true);
+    
     try {
       const story = await storyService.createStory(
         newStoryTitle,
@@ -40,12 +47,12 @@ export const StoryList: Devvit.BlockComponent<StoryListProps> = ({
         userData.subreddit.name
       );
       
+      console.log(`[StoryList] Story created: ${story.id}`);
       setNewStoryTitle('');
       setShowCreateForm(false);
       onSelectStory(story.id);
     } catch (error) {
-      console.error('Failed to create story:', error);
-      // TODO: Show error toast
+      console.error('[StoryList] Failed to create story:', error);
     } finally {
       setIsCreating(false);
     }
@@ -66,7 +73,7 @@ export const StoryList: Devvit.BlockComponent<StoryListProps> = ({
 
   if (loading) {
     return (
-      <vstack height="100%" width="100%" alignment="middle center">
+      <vstack height="100%" width="100%" alignment="middle center" padding="large">
         <text>Loading stories...</text>
       </vstack>
     );
@@ -74,8 +81,7 @@ export const StoryList: Devvit.BlockComponent<StoryListProps> = ({
 
   return (
     <vstack height="100%" width="100%" padding="medium" gap="medium">
-      {/* Header */}
-      <hstack width="100%" alignment="space-between middle">
+      <hstack width="100%" alignment="middle space-between">
         <vstack>
           <text size="large" weight="bold">🧵 Active Stories</text>
           <text size="small" color="#818384">
@@ -83,7 +89,10 @@ export const StoryList: Devvit.BlockComponent<StoryListProps> = ({
           </text>
         </vstack>
         <button 
-          onPress={() => setShowCreateForm(!showCreateForm)}
+          onPress={() => {
+            console.log(`[StoryList] Toggle create form: ${!showCreateForm}`);
+            setShowCreateForm(!showCreateForm);
+          }}
           appearance="primary"
           size="small"
         >
@@ -91,7 +100,6 @@ export const StoryList: Devvit.BlockComponent<StoryListProps> = ({
         </button>
       </hstack>
 
-      {/* Create story form */}
       {showCreateForm && (
         <vstack 
           backgroundColor="#1a1a1b" 
@@ -125,42 +133,50 @@ export const StoryList: Devvit.BlockComponent<StoryListProps> = ({
         </vstack>
       )}
 
-      {/* Stories list */}
       <vstack gap="small" grow>
         {stories && stories.length > 0 ? (
-          stories.map((story: Story) => (
-            <vstack
-              key={story.id}
-              backgroundColor="#1a1a1b"
-              padding="medium"
-              cornerRadius="medium"
-              onPress={() => onSelectStory(story.id)}
-            >
-              <hstack width="100%" alignment="space-between middle">
-                <text weight="bold" size="medium">{story.title}</text>
-                <text size="small" color="#818384">
-                  {formatTimeAgo(story.metadata.lastActivity)}
-                </text>
-              </hstack>
-              
-              <hstack gap="medium" alignment="start">
-                <text size="small" color="#46d160">
-                  {story.sentences.length} sentences
-                </text>
-                <text size="small" color="#ff4500">
-                  {story.metadata.totalContributors} contributors
-                </text>
-              </hstack>
-              
-              {story.sentences.length > 0 && (
-                <text size="small" color="#d7dadc" maxWidth="100%">
-                  Latest: "{story.sentences[story.sentences.length - 1].content}"
-                </text>
-              )}
-            </vstack>
-          ))
+          stories.map((story: Story) => {
+            const sentenceCount = story.sentences?.length || 0;
+            const contributorCount = story.metadata?.totalContributors || 0;
+            const lastSentence = sentenceCount > 0 ? story.sentences[sentenceCount - 1] : null;
+            
+            return (
+              <vstack
+                key={story.id}
+                backgroundColor="#1a1a1b"
+                padding="medium"
+                cornerRadius="medium"
+                onPress={() => {
+                  console.log(`[StoryList] Story selected: ${story.id}`);
+                  onSelectStory(story.id);
+                }}
+              >
+                <hstack width="100%" alignment="middle space-between">
+                  <text weight="bold" size="medium">{story.title}</text>
+                  <text size="small" color="#818384">
+                    {formatTimeAgo(story.metadata.lastActivity)}
+                  </text>
+                </hstack>
+                
+                <hstack gap="medium" alignment="start top">
+                  <text size="small" color="#46d160">
+                    {sentenceCount} sentences
+                  </text>
+                  <text size="small" color="#ff4500">
+                    {contributorCount} contributors
+                  </text>
+                </hstack>
+                
+                {lastSentence && (
+                  <text size="small" color="#d7dadc" maxWidth="100%">
+                    Latest: "{lastSentence.content}"
+                  </text>
+                )}
+              </vstack>
+            );
+          })
         ) : (
-          <vstack alignment="center middle" padding="large" gap="medium">
+          <vstack alignment="middle center" padding="large" gap="medium">
             <text size="large">📚</text>
             <text color="#818384">No active stories yet</text>
             <text size="small" color="#818384" alignment="center">

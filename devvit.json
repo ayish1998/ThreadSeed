@@ -1,0 +1,17 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "threadseed",
+  "blocks": {
+    "entry": "src/main.tsx"
+  },
+  "permissions": {
+    "redis": true,
+    "reddit": {
+      "enable": true,
+      "scope": "user"
+    }
+  },
+  "dev": {
+    "subreddit": "threadseed_dev"
+  }
+}

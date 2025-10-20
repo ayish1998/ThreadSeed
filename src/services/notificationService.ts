@@ -1,4 +1,17 @@
+// services/notificationService.ts - COMPLETE VERSION
+
 import { Context } from '@devvit/public-api';
+import {
+  SentenceSubmission,
+  VotingSession,
+  SubmissionVote,
+  SubmissionQueue,
+  ConflictResolution,
+  validateSentenceSubmission,
+  validateVotingSession,
+  calculateSubmissionScore,
+  determineWinningSubmission
+} from '../types/story.js';
 
 // Real-time notification interfaces for requirements 5.2, 5.4
 export interface Notification {
@@ -14,7 +27,7 @@ export interface Notification {
   expiresAt?: number;
 }
 
-export type NotificationType = 
+export type NotificationType =
   | 'story_update'
   | 'new_sentence'
   | 'branch_created'
@@ -117,7 +130,7 @@ export class NotificationService {
    */
   async sendNotification(notification: Omit<Notification, 'id' | 'timestamp' | 'read'>): Promise<string> {
     const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     const fullNotification: Notification = {
       ...notification,
       id: notificationId,
@@ -176,7 +189,7 @@ export class NotificationService {
    */
   async broadcastToStory(storyId: string, message: Omit<BroadcastMessage, 'id' | 'timestamp'>): Promise<void> {
     const broadcastId = `broadcast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     const fullMessage: BroadcastMessage = {
       ...message,
       id: broadcastId,
@@ -215,7 +228,7 @@ export class NotificationService {
   async getUserNotifications(userId: string, limit: number = 20, offset: number = 0): Promise<Notification[]> {
     try {
       const notifications = await this.context.redis.hGetAll(`notifications:${userId}`);
-      
+
       const parsedNotifications = Object.values(notifications)
         .map(notifStr => JSON.parse(notifStr) as Notification)
         .filter(notif => !notif.expiresAt || notif.expiresAt > Date.now())
@@ -235,7 +248,7 @@ export class NotificationService {
   async markAsRead(userId: string, notificationId: string): Promise<boolean> {
     try {
       const notificationStr = await this.context.redis.hGet(`notifications:${userId}`, notificationId);
-      
+
       if (!notificationStr) {
         return false;
       }
@@ -266,7 +279,7 @@ export class NotificationService {
 
       for (const [notificationId, notificationStr] of Object.entries(notifications)) {
         const notification = JSON.parse(notificationStr) as Notification;
-        
+
         if (!notification.read) {
           notification.read = true;
           await this.context.redis.hSet(
@@ -291,7 +304,7 @@ export class NotificationService {
   async getUnreadCount(userId: string): Promise<number> {
     try {
       const notifications = await this.context.redis.hGetAll(`notifications:${userId}`);
-      
+
       return Object.values(notifications)
         .map(notifStr => JSON.parse(notifStr) as Notification)
         .filter(notif => !notif.read && (!notif.expiresAt || notif.expiresAt > Date.now()))
@@ -309,13 +322,13 @@ export class NotificationService {
     try {
       // This would typically be run as a background job
       const userKeys = await this.context.redis.keys('notifications:*');
-      
+
       for (const userKey of userKeys) {
         const notifications = await this.context.redis.hGetAll(userKey);
-        
+
         for (const [notificationId, notificationStr] of Object.entries(notifications)) {
           const notification = JSON.parse(notificationStr) as Notification;
-          
+
           if (notification.expiresAt && notification.expiresAt < Date.now()) {
             await this.context.redis.hDel(userKey, notificationId);
           }
@@ -331,7 +344,7 @@ export class NotificationService {
    */
   private async addToQueue(userId: string, notification: Notification): Promise<void> {
     const queueKey = `notification_queue:${userId}`;
-    
+
     try {
       // Get current queue
       const queueStr = await this.context.redis.get(queueKey);
@@ -370,10 +383,10 @@ export class NotificationService {
     try {
       // In a real implementation, this would integrate with Reddit's notification system
       // or use WebSockets/Server-Sent Events for real-time delivery
-      
+
       // For now, we'll just log the delivery attempt
       console.log(`Delivering notification ${notification.id} to user ${notification.userId}`);
-      
+
       // Store delivery confirmation
       const confirmation: DeliveryConfirmation = {
         notificationId: notification.id,
@@ -391,7 +404,7 @@ export class NotificationService {
 
     } catch (error) {
       console.error('Failed to deliver notification:', error);
-      
+
       // Store failed delivery for retry
       const confirmation: DeliveryConfirmation = {
         notificationId: notification.id,
@@ -416,7 +429,7 @@ export class NotificationService {
     try {
       // In a real implementation, this would use WebSockets or similar
       console.log(`Broadcasting message ${message.id} to user ${userId}`);
-      
+
       // Store in user's broadcast inbox for retrieval
       await this.context.redis.lPush(
         `broadcast_inbox:${userId}`,
@@ -425,7 +438,7 @@ export class NotificationService {
 
       // Limit inbox size
       await this.context.redis.lTrim(`broadcast_inbox:${userId}`, 0, 49); // Keep last 50 messages
-      
+
       // Set expiry
       await this.context.redis.expire(`broadcast_inbox:${userId}`, 3600); // 1 hour
 
@@ -453,7 +466,7 @@ export class NotificationService {
   async getUserBroadcasts(userId: string, limit: number = 10): Promise<BroadcastMessage[]> {
     try {
       const messages = await this.context.redis.lRange(`broadcast_inbox:${userId}`, 0, limit - 1);
-      
+
       return messages.map(msgStr => JSON.parse(msgStr) as BroadcastMessage)
         .sort((a, b) => b.timestamp - a.timestamp);
     } catch (error) {
@@ -469,7 +482,7 @@ export class NotificationService {
     try {
       // Get story participants
       const participants = await this.getStoryParticipants(storyId);
-      
+
       // Send notifications
       await this.sendBulkNotifications(participants, {
         type: 'story_update',
@@ -602,7 +615,7 @@ export class NotificationService {
 
       for (const [userId, indicatorStr] of Object.entries(indicators)) {
         const indicator = JSON.parse(indicatorStr) as TypingIndicator;
-        
+
         // Remove stale indicators (older than 30 seconds)
         if (now - indicator.lastActivity > 30000) {
           await this.context.redis.hDel(`typing_indicators:${storyId}`, userId);
@@ -624,11 +637,11 @@ export class NotificationService {
   async updateTypingActivity(userId: string, storyId: string): Promise<void> {
     try {
       const indicatorStr = await this.context.redis.hGet(`typing_indicators:${storyId}`, userId);
-      
+
       if (indicatorStr) {
         const indicator = JSON.parse(indicatorStr) as TypingIndicator;
         indicator.lastActivity = Date.now();
-        
+
         await this.context.redis.hSet(
           `typing_indicators:${storyId}`,
           userId,
@@ -657,7 +670,7 @@ export class NotificationService {
 
       // Add to active users set
       await this.context.redis.sAdd(`story_active_users:${storyId}`, userId);
-      
+
       // Store user details
       await this.context.redis.hSet(
         `story_user_details:${storyId}`,
@@ -748,7 +761,7 @@ export class NotificationService {
         const userDetailStr = userDetails[userId];
         if (userDetailStr) {
           const user = JSON.parse(userDetailStr) as ActiveUser;
-          
+
           // Check if user is still active (within 5 minutes)
           if (now - user.lastSeen <= 300000) {
             // Update activity status based on last seen
@@ -759,7 +772,7 @@ export class NotificationService {
             } else {
               user.activityStatus = 'away';
             }
-            
+
             activeUsers.push(user);
           } else {
             // Remove inactive user
@@ -802,7 +815,7 @@ export class NotificationService {
         const user = JSON.parse(userDetailStr) as ActiveUser;
         user.lastSeen = Date.now();
         user.activityStatus = status === 'idle' ? 'idle' : 'active';
-        
+
         await this.context.redis.hSet(
           `story_user_details:${storyId}`,
           userId,
@@ -821,11 +834,11 @@ export class NotificationService {
   async getUserPresence(userId: string, storyId: string): Promise<UserPresence | null> {
     try {
       const presenceStr = await this.context.redis.get(`user_presence:${userId}:${storyId}`);
-      
+
       if (presenceStr) {
         return JSON.parse(presenceStr) as UserPresence;
       }
-      
+
       return null;
     } catch (error) {
       console.error('Failed to get user presence:', error);
@@ -900,7 +913,7 @@ export class NotificationService {
   async getRecentActivity(storyId: string, limit: number = 10): Promise<ActivityEvent[]> {
     try {
       const events = await this.context.redis.lRange(`story_activity:${storyId}`, 0, limit - 1);
-      
+
       return events.map(eventStr => JSON.parse(eventStr) as ActivityEvent)
         .sort((a, b) => b.timestamp - a.timestamp);
     } catch (error) {
@@ -916,13 +929,13 @@ export class NotificationService {
     try {
       // This would typically be run as a background job
       const storyKeys = await this.context.redis.keys('story_active_users:*');
-      
+
       for (const storyKey of storyKeys) {
         const storyId = storyKey.replace('story_active_users:', '');
-        
+
         // Clean up active users
         await this.getActiveUsers(storyId); // This method already removes inactive users
-        
+
         // Clean up typing indicators
         await this.getTypingIndicators(storyId); // This method already removes stale indicators
       }
@@ -938,7 +951,7 @@ export class NotificationService {
     try {
       // Update user presence
       await this.updateUserPresence(userId, storyId, 'viewing');
-      
+
       // If user is typing, update typing activity
       const typingIndicator = await this.context.redis.hGet(`typing_indicators:${storyId}`, userId);
       if (typingIndicator) {
@@ -946,6 +959,502 @@ export class NotificationService {
       }
     } catch (error) {
       console.error('Failed to send heartbeat:', error);
+    }
+  }
+
+  // ===== SIMULTANEOUS SUBMISSION HANDLING METHODS =====
+  // Implements requirement 5.3 (simultaneous submission handling and conflict resolution)
+
+  /**
+   * Submit a sentence and handle potential conflicts with simultaneous submissions
+   */
+  async submitSentence(submission: Omit<SentenceSubmission, 'id' | 'submittedAt'>): Promise<{
+    submissionId: string;
+    status: 'accepted' | 'queued_for_voting' | 'conflict_detected';
+    votingSessionId?: string;
+    conflictResolutionId?: string;
+  }> {
+    try {
+      // Validate submission
+      if (!validateSentenceSubmission(submission)) {
+        throw new Error('Invalid sentence submission');
+      }
+
+      const submissionId = `submission_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const fullSubmission: SentenceSubmission = {
+        ...submission,
+        id: submissionId,
+        submittedAt: Date.now()
+      };
+
+      // Check for existing submissions at the same position
+      const queueKey = `submission_queue:${submission.storyId}:${submission.position}`;
+      const existingQueueStr = await this.context.redis.get(queueKey);
+      
+      if (existingQueueStr) {
+        // Conflict detected - add to existing queue
+        const queue = JSON.parse(existingQueueStr) as SubmissionQueue;
+        queue.submissions.push(fullSubmission);
+        
+        await this.context.redis.setex(queueKey, 1800, JSON.stringify(queue)); // 30 minutes expiry
+        
+        // Check if we should start voting
+        if (queue.submissions.length >= 2 && queue.processingStatus === 'queued') {
+          const votingSessionId = await this.startVotingSession(queue);
+          
+          return {
+            submissionId,
+            status: 'queued_for_voting',
+            votingSessionId
+          };
+        }
+        
+        return {
+          submissionId,
+          status: 'conflict_detected'
+        };
+      }
+
+      // No conflict - create new queue
+      const newQueue: SubmissionQueue = {
+        storyId: submission.storyId,
+        branchId: submission.branchId,
+        position: submission.position,
+        submissions: [fullSubmission],
+        queuedAt: Date.now(),
+        processingStatus: 'queued'
+      };
+
+      await this.context.redis.setex(queueKey, 1800, JSON.stringify(newQueue));
+
+      // Wait a short time to check for simultaneous submissions
+      await this.waitForSimultaneousSubmissions(queueKey, 5000); // 5 seconds
+
+      // Check queue again after waiting
+      const updatedQueueStr = await this.context.redis.get(queueKey);
+      if (updatedQueueStr) {
+        const updatedQueue = JSON.parse(updatedQueueStr) as SubmissionQueue;
+        
+        if (updatedQueue.submissions.length === 1) {
+          // No conflicts - accept submission
+          await this.context.redis.del(queueKey);
+          
+          // Add sentence to story
+          await this.addSentenceToStory(fullSubmission);
+          
+          // Notify participants
+          await this.notifyStoryUpdate(submission.storyId, 'sentence_added', {
+            sentenceId: submissionId,
+            authorName: submission.authorName,
+            content: submission.content
+          });
+          
+          return {
+            submissionId,
+            status: 'accepted'
+          };
+        } else {
+          // Conflicts detected - start voting
+          const votingSessionId = await this.startVotingSession(updatedQueue);
+          
+          return {
+            submissionId,
+            status: 'queued_for_voting',
+            votingSessionId
+          };
+        }
+      }
+
+      return {
+        submissionId,
+        status: 'accepted'
+      };
+
+    } catch (error) {
+      console.error('Failed to submit sentence:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Wait for potential simultaneous submissions
+   */
+  private async waitForSimultaneousSubmissions(queueKey: string, waitTime: number): Promise<void> {
+    return new Promise(resolve => {
+      setTimeout(resolve, waitTime);
+    });
+  }
+
+  /**
+   * Add sentence to story (helper method)
+   */
+  private async addSentenceToStory(submission: SentenceSubmission): Promise<void> {
+    try {
+      // Get story data
+      const storyData = await this.context.redis.get(`story:${submission.storyId}`);
+      if (!storyData) {
+        throw new Error('Story not found');
+      }
+
+      const story = JSON.parse(storyData);
+      
+      // Create sentence object
+      const sentence = {
+        id: submission.id,
+        content: submission.content,
+        authorId: submission.authorId,
+        authorName: submission.authorName,
+        createdAt: submission.submittedAt,
+        votes: 0,
+        upvoters: [],
+        downvoters: [],
+        order: submission.position
+      };
+
+      // Add to story
+      story.sentences.push(sentence);
+      story.metadata.lastActivity = Date.now();
+
+      // Update contributor count
+      const contributorIds = new Set(story.sentences.map((s: any) => s.authorId));
+      story.metadata.totalContributors = contributorIds.size;
+
+      // Save updated story
+      await this.context.redis.set(`story:${submission.storyId}`, JSON.stringify(story));
+      
+      // Store sentence separately for quick access
+      await this.context.redis.set(`sentence:${submission.id}`, JSON.stringify(sentence));
+
+      console.log(`Added sentence ${submission.id} to story ${submission.storyId}`);
+
+    } catch (error) {
+      console.error('Failed to add sentence to story:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Start voting session for conflicting submissions
+   */
+  private async startVotingSession(queue: SubmissionQueue): Promise<string> {
+    try {
+      const sessionId = `voting_session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      const votingSession: VotingSession = {
+        id: sessionId,
+        storyId: queue.storyId,
+        branchId: queue.branchId,
+        position: queue.position,
+        submissions: queue.submissions,
+        votes: [],
+        status: 'active',
+        createdAt: Date.now(),
+        expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
+        participantCount: 0,
+        requiredVotes: Math.max(3, Math.floor(queue.submissions.length * 1.5)) // At least 3 votes
+      };
+
+      // Store voting session
+      await this.context.redis.set(`voting_session:${sessionId}`, JSON.stringify(votingSession));
+      await this.context.redis.expire(`voting_session:${sessionId}`, 25 * 60 * 60); // 25 hours
+
+      // Update queue status
+      queue.processingStatus = 'voting';
+      queue.votingSessionId = sessionId;
+      
+      const queueKey = `submission_queue:${queue.storyId}:${queue.position}`;
+      await this.context.redis.setex(queueKey, 1800, JSON.stringify(queue));
+
+      // Notify participants about voting
+      await this.notifyStoryUpdate(queue.storyId, 'voting_started', {
+        votingSessionId: sessionId,
+        submissionCount: queue.submissions.length,
+        position: queue.position
+      });
+
+      console.log(`Started voting session ${sessionId} for ${queue.submissions.length} submissions`);
+
+      return sessionId;
+
+    } catch (error) {
+      console.error('Failed to start voting session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get voting session by ID
+   */
+  async getVotingSession(sessionId: string): Promise<VotingSession | null> {
+    try {
+      const sessionData = await this.context.redis.get(`voting_session:${sessionId}`);
+      return sessionData ? JSON.parse(sessionData) : null;
+    } catch (error) {
+      console.error('Failed to get voting session:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Vote on a submission in a voting session
+   */
+  async voteOnSubmission(
+    sessionId: string,
+    submissionId: string,
+    userId: string,
+    weight: number,
+    voteType: 'approve' | 'reject' | 'neutral'
+  ): Promise<boolean> {
+    try {
+      const session = await this.getVotingSession(sessionId);
+      if (!session || session.status !== 'active') {
+        return false;
+      }
+
+      // Check if session has expired
+      if (Date.now() > session.expiresAt) {
+        await this.expireVotingSession(sessionId);
+        return false;
+      }
+
+      // Check if submission exists in session
+      const submission = session.submissions.find(s => s.id === submissionId);
+      if (!submission) {
+        return false;
+      }
+
+      // Check if user is the author (can't vote on own submission)
+      if (submission.authorId === userId) {
+        return false;
+      }
+
+      // Remove any existing vote from this user
+      session.votes = session.votes.filter(v => v.userId !== userId);
+
+      // Add new vote
+      const vote: SubmissionVote = {
+        id: `vote_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        votingSessionId: sessionId,
+        submissionId,
+        userId,
+        weight,
+        timestamp: Date.now(),
+        voteType
+      };
+
+      session.votes.push(vote);
+      session.participantCount = new Set(session.votes.map(v => v.userId)).size;
+
+      // Save updated session
+      await this.context.redis.set(`voting_session:${sessionId}`, JSON.stringify(session));
+
+      // Check if we have enough votes to conclude
+      if (session.votes.length >= session.requiredVotes) {
+        await this.concludeVotingSession(sessionId);
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Failed to vote on submission:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Conclude voting session and select winning submission
+   */
+  private async concludeVotingSession(sessionId: string): Promise<void> {
+    try {
+      const session = await this.getVotingSession(sessionId);
+      if (!session || session.status !== 'active') {
+        return;
+      }
+
+      // Calculate scores for each submission
+      const winningSubmissionId = determineWinningSubmission(session.submissions, session.votes);
+
+      if (winningSubmissionId) {
+        const winningSubmission = session.submissions.find(s => s.id === winningSubmissionId);
+        
+        if (winningSubmission) {
+          // Add winning submission to story
+          await this.addSentenceToStory(winningSubmission);
+
+          // Update session status
+          session.status = 'completed';
+          session.winningSubmissionId = winningSubmissionId;
+          await this.context.redis.set(`voting_session:${sessionId}`, JSON.stringify(session));
+
+          // Notify participants
+          await this.notifyStoryUpdate(session.storyId, 'voting_completed', {
+            votingSessionId: sessionId,
+            winningSubmissionId,
+            winnerName: winningSubmission.authorName
+          });
+
+          // Clean up submission queue
+          const queueKey = `submission_queue:${session.storyId}:${session.position}`;
+          await this.context.redis.del(queueKey);
+
+          console.log(`Voting session ${sessionId} concluded. Winner: ${winningSubmissionId}`);
+        }
+      } else {
+        // No clear winner - use first submission as fallback
+        const fallbackSubmission = session.submissions[0];
+        await this.addSentenceToStory(fallbackSubmission);
+
+        session.status = 'completed';
+        session.winningSubmissionId = fallbackSubmission.id;
+        await this.context.redis.set(`voting_session:${sessionId}`, JSON.stringify(session));
+
+        console.log(`Voting session ${sessionId} concluded with fallback submission`);
+      }
+
+    } catch (error) {
+      console.error('Failed to conclude voting session:', error);
+    }
+  }
+
+  /**
+   * Expire voting session
+   */
+  private async expireVotingSession(sessionId: string): Promise<void> {
+    try {
+      const session = await this.getVotingSession(sessionId);
+      if (!session) return;
+
+      session.status = 'expired';
+      await this.context.redis.set(`voting_session:${sessionId}`, JSON.stringify(session));
+
+      // Use fallback selection
+      const fallbackSubmission = session.submissions[0];
+      await this.addSentenceToStory(fallbackSubmission);
+
+      // Notify participants
+      await this.notifyStoryUpdate(session.storyId, 'voting_expired', {
+        votingSessionId: sessionId,
+        fallbackSubmissionId: fallbackSubmission.id
+      });
+
+      console.log(`Voting session ${sessionId} expired. Using fallback submission.`);
+
+    } catch (error) {
+      console.error('Failed to expire voting session:', error);
+    }
+  }
+
+  /**
+   * Get active voting sessions for a story
+   */
+  async getActiveVotingSessions(storyId: string): Promise<VotingSession[]> {
+    try {
+      const keys = await this.context.redis.keys(`voting_session:*`);
+      const activeSessions: VotingSession[] = [];
+
+      for (const key of keys) {
+        const sessionData = await this.context.redis.get(key);
+        if (sessionData) {
+          const session = JSON.parse(sessionData) as VotingSession;
+          
+          if (session.storyId === storyId && session.status === 'active' && Date.now() <= session.expiresAt) {
+            activeSessions.push(session);
+          }
+        }
+      }
+
+      return activeSessions;
+
+    } catch (error) {
+      console.error('Failed to get active voting sessions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Process all expired voting sessions
+   */
+  async processExpiredVotingSessions(): Promise<void> {
+    try {
+      const keys = await this.context.redis.keys(`voting_session:*`);
+
+      for (const key of keys) {
+        const sessionData = await this.context.redis.get(key);
+        if (sessionData) {
+          const session = JSON.parse(sessionData) as VotingSession;
+          
+          if (session.status === 'active' && Date.now() > session.expiresAt) {
+            await this.expireVotingSession(session.id);
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error('Failed to process expired voting sessions:', error);
+    }
+  }
+
+  /**
+   * Create conflict resolution record
+   */
+  async createConflictResolution(
+    storyId: string,
+    conflictType: ConflictResolution['conflictType'],
+    submissions: SentenceSubmission[]
+  ): Promise<string> {
+    try {
+      const resolutionId = `resolution_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      const resolution: ConflictResolution = {
+        id: resolutionId,
+        storyId,
+        conflictType,
+        submissions,
+        resolutionMethod: 'community_vote'
+      };
+
+      await this.context.redis.set(`conflict_resolution:${resolutionId}`, JSON.stringify(resolution));
+      await this.context.redis.expire(`conflict_resolution:${resolutionId}`, 7 * 24 * 60 * 60); // 7 days
+
+      return resolutionId;
+
+    } catch (error) {
+      console.error('Failed to create conflict resolution:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Resolve conflict
+   */
+  async resolveConflict(
+    resolutionId: string,
+    selectedSubmissionId: string,
+    resolvedBy: string,
+    reason: string
+  ): Promise<boolean> {
+    try {
+      const resolutionData = await this.context.redis.get(`conflict_resolution:${resolutionId}`);
+      if (!resolutionData) return false;
+
+      const resolution = JSON.parse(resolutionData) as ConflictResolution;
+
+      resolution.resolvedAt = Date.now();
+      resolution.resolvedBy = resolvedBy;
+      resolution.result = {
+        selectedSubmissionId,
+        reason
+      };
+
+      await this.context.redis.set(`conflict_resolution:${resolutionId}`, JSON.stringify(resolution));
+
+      console.log(`Conflict ${resolutionId} resolved. Selected submission: ${selectedSubmissionId}`);
+
+      return true;
+
+    } catch (error) {
+      console.error('Failed to resolve conflict:', error);
+      return false;
     }
   }
 }

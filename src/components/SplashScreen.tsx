@@ -1,3 +1,4 @@
+// src/components/SplashScreen.tsx
 import { Devvit } from '@devvit/public-api';
 
 interface SplashScreenProps {
@@ -5,6 +6,8 @@ interface SplashScreenProps {
 }
 
 export const SplashScreen: Devvit.BlockComponent<SplashScreenProps> = ({ onStart }) => {
+  console.log('[SplashScreen] Rendering splash screen');
+  
   return (
     <vstack 
       height="100%" 
@@ -14,8 +17,7 @@ export const SplashScreen: Devvit.BlockComponent<SplashScreenProps> = ({ onStart
       padding="large"
       gap="medium"
     >
-      {/* Animated logo area */}
-      <vstack alignment="center middle" gap="small">
+      <vstack alignment="middle center" gap="small">
         <text size="xxlarge" weight="bold" color="#ff4500">
           🧵 StoryWeave
         </text>
@@ -24,26 +26,27 @@ export const SplashScreen: Devvit.BlockComponent<SplashScreenProps> = ({ onStart
         </text>
       </vstack>
 
-      {/* Feature highlights */}
-      <vstack gap="small" alignment="center" padding="medium">
-        <hstack gap="small" alignment="center middle">
+      <vstack gap="small" alignment="middle center" padding="medium">
+        <hstack gap="small" alignment="middle start">
           <text color="#46d160">✓</text>
           <text size="small" color="#d7dadc">Build stories together, one sentence at a time</text>
         </hstack>
-        <hstack gap="small" alignment="center middle">
+        <hstack gap="small" alignment="middle start">
           <text color="#46d160">✓</text>
           <text size="small" color="#d7dadc">Vote on the best contributions</text>
         </hstack>
-        <hstack gap="small" alignment="center middle">
+        <hstack gap="small" alignment="middle start">
           <text color="#46d160">✓</text>
           <text size="small" color="#d7dadc">Create branching narratives</text>
         </hstack>
       </vstack>
 
-      {/* Call to action */}
-      <vstack gap="medium" alignment="center">
+      <vstack gap="medium" alignment="middle center">
         <button 
-          onPress={onStart}
+          onPress={() => {
+            console.log('[SplashScreen] Start button pressed');
+            onStart();
+          }}
           appearance="primary"
           size="large"
         >

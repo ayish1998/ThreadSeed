@@ -1,3 +1,4 @@
+// src/components/StoryBuilder.tsx
 import { Context, Devvit, useState, useAsync } from '@devvit/public-api';
 import { Story, StorySentence } from '../types/story.js';
 import { StoryService } from '../services/storyService.js';
@@ -76,7 +77,7 @@ export const StoryBuilder: Devvit.BlockComponent<StoryBuilderProps> = ({
 
   if (loading) {
     return (
-      <vstack height="100%" width="100%" alignment="middle center">
+      <vstack height="100%" width="100%" alignment="middle center" padding="large">
         <text>Loading story...</text>
       </vstack>
     );
@@ -84,7 +85,7 @@ export const StoryBuilder: Devvit.BlockComponent<StoryBuilderProps> = ({
 
   if (!story) {
     return (
-      <vstack height="100%" width="100%" alignment="middle center" gap="medium">
+      <vstack height="100%" width="100%" alignment="middle center" gap="medium" padding="large">
         <text>Story not found</text>
         <button onPress={onBack} appearance="secondary">
           Back to Stories
@@ -92,6 +93,11 @@ export const StoryBuilder: Devvit.BlockComponent<StoryBuilderProps> = ({
       </vstack>
     );
   }
+
+  // Safely access arrays with fallbacks
+  const sentences = story.sentences || [];
+  const sentenceCount = sentences.length;
+  const contributorCount = story.metadata?.totalContributors || 0;
 
   return (
     <vstack height="100%" width="100%" padding="medium" gap="medium">
@@ -103,10 +109,10 @@ export const StoryBuilder: Devvit.BlockComponent<StoryBuilderProps> = ({
         <vstack alignment="center">
           <text size="medium" weight="bold">{story.title}</text>
           <text size="small" color="#818384">
-            {story.sentences.length} sentences • {story.metadata.totalContributors} contributors
+            {sentenceCount} sentences • {contributorCount} contributors
           </text>
         </vstack>
-        <spacer />
+        <spacer size="small" />
       </hstack>
 
       {/* Story content */}
@@ -119,42 +125,48 @@ export const StoryBuilder: Devvit.BlockComponent<StoryBuilderProps> = ({
       >
         <text weight="bold" size="medium">📖 Story</text>
         
-        {story.sentences.length > 0 ? (
-          <vstack gap="small" maxHeight="60%" overflow="scroll">
-            {story.sentences.map((sentence: StorySentence, index: number) => (
-              <hstack key={sentence.id} width="100%" gap="small" alignment="start">
-                <text size="small" color="#818384" minWidth="20px">
-                  {index + 1}.
-                </text>
-                <vstack grow gap="xsmall">
-                  <text size="medium">{sentence.content}</text>
-                  <hstack gap="medium" alignment="start">
-                    <text size="small" color="#ff4500">
-                      u/{sentence.authorName}
-                    </text>
-                    <text size="small" color="#818384">
-                      {formatTimeAgo(sentence.createdAt)}
-                    </text>
-                    <hstack gap="small" alignment="center">
-                      <button 
-                        onPress={() => handleVote(sentence.id, true)}
-                        appearance="plain"
-                        size="small"
-                      >
-                        ↑ {sentence.upvoters.length}
-                      </button>
-                      <button 
-                        onPress={() => handleVote(sentence.id, false)}
-                        appearance="plain"
-                        size="small"
-                      >
-                        ↓ {sentence.downvoters.length}
-                      </button>
+        {sentenceCount > 0 ? (
+          <vstack gap="small" maxHeight="60%">
+            {sentences.map((sentence: StorySentence, index: number) => {
+              // Safely access vote arrays
+              const upvoters = sentence.upvoters || [];
+              const downvoters = sentence.downvoters || [];
+              
+              return (
+                <hstack key={sentence.id} width="100%" gap="small" alignment="start">
+                  <text size="small" color="#818384" minWidth="20px">
+                    {index + 1}.
+                  </text>
+                  <vstack grow gap="xsmall">
+                    <text size="medium">{sentence.content}</text>
+                    <hstack gap="medium" alignment="start">
+                      <text size="small" color="#ff4500">
+                        u/{sentence.authorName}
+                      </text>
+                      <text size="small" color="#818384">
+                        {formatTimeAgo(sentence.createdAt)}
+                      </text>
+                      <hstack gap="small" alignment="center">
+                        <button 
+                          onPress={() => handleVote(sentence.id, true)}
+                          appearance="plain"
+                          size="small"
+                        >
+                          ↑ {upvoters.length}
+                        </button>
+                        <button 
+                          onPress={() => handleVote(sentence.id, false)}
+                          appearance="plain"
+                          size="small"
+                        >
+                          ↓ {downvoters.length}
+                        </button>
+                      </hstack>
                     </hstack>
-                  </hstack>
-                </vstack>
-              </hstack>
-            ))}
+                  </vstack>
+                </hstack>
+              );
+            })}
           </vstack>
         ) : (
           <vstack alignment="center middle" padding="large" gap="small">
@@ -206,19 +218,19 @@ export const StoryBuilder: Devvit.BlockComponent<StoryBuilderProps> = ({
       >
         <vstack alignment="center">
           <text size="large" weight="bold" color="#46d160">
-            {story.sentences.length}
+            {sentenceCount}
           </text>
           <text size="small" color="#818384">Sentences</text>
         </vstack>
         <vstack alignment="center">
           <text size="large" weight="bold" color="#ff4500">
-            {story.metadata.totalContributors}
+            {contributorCount}
           </text>
           <text size="small" color="#818384">Contributors</text>
         </vstack>
         <vstack alignment="center">
           <text size="large" weight="bold" color="#7c3aed">
-            {story.sentences.reduce((sum, s) => sum + s.votes, 0)}
+            {sentences.reduce((sum, s) => sum + (s.votes || 0), 0)}
           </text>
           <text size="small" color="#818384">Total Votes</text>
         </vstack>
