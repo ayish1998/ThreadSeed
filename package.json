@@ -1,6 +1,6 @@
 {
-  "name": "threadsmith",
-  "version": "1.0.0",
+  "name": "taleseed",
+  "version": "0.0.0",
   "description": "ThreadSmith - Simplified collaborative storytelling for Reddit communities",
   "main": "src/main.tsx",
   "scripts": {
@@ -12,15 +12,18 @@
   },
   "devDependencies": {
     "@devvit/kit": "^1.1.4",
-    "@devvit/protos": "^0.12.1",
-    "@devvit/public-api": "^0.12.1",
+    "@devvit/protos": "0.12.0",
+    "@devvit/public-api": "0.12.0",
     "@types/react": "^19.2.2",
-    "devvit": "^0.12.1",
+    "devvit": "0.12.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   },
   "dependencies": {
     "react": "^18.0.0",
     "react-dom": "^18.0.0"
-  }
+  },
+  "type": "module",
+  "private": true,
+  "license": "BSD-3-Clause"
 }
