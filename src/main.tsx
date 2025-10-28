@@ -602,7 +602,15 @@ const threadSmithCreationForm = Devvit.createForm(
     console.log('[ThreadSmithForm] Form submitted with data:', event.values);
 
     try {
-      const subreddit = await reddit.getCurrentSubreddit();
+      let subreddit;
+      try {
+        subreddit = await reddit.getCurrentSubreddit();
+      } catch (subredditError) {
+        console.error('[ThreadSmithForm] Cannot access subreddit (may be private):', subredditError);
+        ui.showToast({ text: '❌ Cannot access subreddit. Please check permissions or make subreddit public.' });
+        return;
+      }
+      
       const user = await reddit.getCurrentUser();
 
       // Validate form data
@@ -731,7 +739,15 @@ Devvit.addMenuItem({
     console.log('[MenuItem] ThreadSmith Story Hub pressed');
 
     try {
-      const subreddit = await reddit.getCurrentSubreddit();
+      let subreddit;
+      try {
+        subreddit = await reddit.getCurrentSubreddit();
+      } catch (subredditError) {
+        console.error('[MenuItem] Cannot access subreddit (may be private):', subredditError);
+        ui.showToast({ text: '❌ Cannot access subreddit. Please check permissions or make subreddit public.' });
+        return;
+      }
+      
       console.log(`[MenuItem] Creating ThreadSmith Hub post in r/${subreddit.name}`);
 
       // Create a Story Hub custom post

@@ -21,7 +21,15 @@ export const StoryWeaveApp: Devvit.BlockComponent<StoryWeaveAppProps> = ({ conte
     console.log('[StoryWeaveApp] Loading user data...');
     try {
       const user = await context.reddit.getCurrentUser();
-      const subreddit = await context.reddit.getCurrentSubreddit();
+      
+      let subreddit;
+      try {
+        subreddit = await context.reddit.getCurrentSubreddit();
+      } catch (subredditError) {
+        console.error('[StoryWeaveApp] Cannot access subreddit (may be private):', subredditError);
+        // Use a fallback subreddit name or handle gracefully
+        subreddit = { name: 'unknown' };
+      }
 
       console.log(`[StoryWeaveApp] User loaded: ${user?.username}, Subreddit: ${subreddit.name}`);
 
