@@ -4,11 +4,11 @@
   "description": "ThreadSmith - Simplified collaborative storytelling for Reddit communities",
   "main": "src/main.tsx",
   "scripts": {
-    "build": "devvit build",
     "dev": "devvit dev",
     "upload": "devvit upload",
     "test": "vitest --run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@devvit/kit": "^1.1.4",
