@@ -1,4 +1,4 @@
-// services/notificationService.test.ts - COMPLETE VERSION
+// services/notificationService.test.ts 
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotificationService, Notification, BroadcastMessage } from './notificationService.js';

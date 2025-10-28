@@ -1,9 +1,10 @@
+// src/services/gamificationService.ts
 import { Context } from '@devvit/public-api';
-import { 
-  UserProfile, 
-  Badge, 
-  Achievement, 
-  UserStatistics, 
+import {
+  UserProfile,
+  Badge,
+  Achievement,
+  UserStatistics,
   UserPreferences,
   AchievementReward,
   AchievementRequirement,
@@ -72,7 +73,7 @@ export class GamificationService {
     try {
       const { userId, username, subredditName } = params;
       const profileKey = `user:${userId}:profile:${subredditName}`;
-      
+
       // Check if profile already exists
       const existingProfileData = await this.context.redis.get(profileKey);
       if (existingProfileData) {
@@ -133,13 +134,19 @@ export class GamificationService {
 
       // Store profile
       await this.context.redis.set(profileKey, JSON.stringify(userProfile));
-      
-      // Add to subreddit users set
-      await this.context.redis.sadd(`subreddit:${subredditName}:users`, userId);
-      
+
+      // Add to subreddit users set using key-value storage
+      const usersKey = `subreddit:${subredditName}:users`;
+      const existingUsers = await this.context.redis.get(usersKey);
+      const usersList = existingUsers ? JSON.parse(existingUsers) : [];
+      if (!usersList.includes(userId)) {
+        usersList.push(userId);
+        await this.context.redis.set(usersKey, JSON.stringify(usersList));
+      }
+
       // Initialize daily activity tracking
       await this.updateDailyActivity(userId, subredditName);
-      
+
       // Award welcome badge
       await this.awardWelcomeBadge(userId, subredditName);
 
@@ -159,17 +166,17 @@ export class GamificationService {
     try {
       const profileKey = `user:${userId}:profile:${subredditName}`;
       const profileData = await this.context.redis.get(profileKey);
-      
+
       if (!profileData) {
         return null;
       }
 
       const profile: UserProfile = JSON.parse(profileData);
-      
+
       // Update last active timestamp
       profile.lastActive = Date.now();
       await this.context.redis.set(profileKey, JSON.stringify(profile));
-      
+
       return profile;
     } catch (error) {
       console.error('Failed to get user profile:', error);
@@ -184,7 +191,7 @@ export class GamificationService {
   async updateReputation(params: ReputationUpdateParams): Promise<UserProfile | null> {
     try {
       const { userId, subredditName, change, reason, sourceId } = params;
-      
+
       // Get user profile
       let profile = await this.getUserProfile(userId, subredditName);
       if (!profile) {
@@ -196,12 +203,12 @@ export class GamificationService {
       // Apply reputation change
       const oldReputation = profile.reputation;
       profile.reputation = Math.max(0, profile.reputation + change);
-      
+
       // Update level based on new reputation
       const newLevel = calculateUserLevel(profile.reputation);
       const oldLevel = profile.level;
       profile.level = Math.min(this.MAX_LEVEL, newLevel);
-      
+
       // Update statistics
       profile.statistics.totalReputation = profile.reputation;
       profile.lastActive = Date.now();
@@ -226,7 +233,7 @@ export class GamificationService {
       });
 
       console.log(`Updated reputation for ${profile.username}: ${oldReputation} -> ${profile.reputation} (${change > 0 ? '+' : ''}${change}) - ${reason}`);
-      
+
       return profile;
 
     } catch (error) {
@@ -242,20 +249,21 @@ export class GamificationService {
     try {
       // Get all sentences by this user in the subreddit
       const userSentencesKey = `user:${userId}:sentences:${subredditName}`;
-      const sentenceIds = await this.context.redis.smembers(userSentencesKey);
-      
+      const sentenceIdsData = await this.context.redis.get(userSentencesKey);
+      const sentenceIds = sentenceIdsData ? JSON.parse(sentenceIdsData) : [];
+
       let totalReputationFromVotes = 0;
-      
+
       for (const sentenceId of sentenceIds) {
         // Get voting metrics for each sentence
         const metricsData = await this.context.redis.get(`metrics:${sentenceId}`);
         if (metricsData) {
           const metrics = JSON.parse(metricsData);
-          
+
           // Calculate reputation from weighted score
           const reputationFromSentence = Math.max(0, metrics.weightedScore * 2);
           totalReputationFromVotes += reputationFromSentence;
-          
+
           // Bonus for high quality ratings
           if (metrics.qualityRating >= 8) {
             totalReputationFromVotes += 10;
@@ -281,7 +289,7 @@ export class GamificationService {
 
       // Award level-up badges for milestone levels
       const milestones = [5, 10, 25, 50, 75, 100];
-      
+
       for (const milestone of milestones) {
         if (newLevel >= milestone && oldLevel < milestone) {
           await this.awardLevelMilestoneBadge(userId, subredditName, milestone);
@@ -312,7 +320,7 @@ export class GamificationService {
     try {
       const today = new Date().toDateString();
       const activityKey = `user:${userId}:activity:${subredditName}:${today}`;
-      
+
       // Check if already active today
       const alreadyActive = await this.context.redis.get(activityKey);
       if (alreadyActive) return;
@@ -337,7 +345,7 @@ export class GamificationService {
         // Continue streak
         profile.statistics.currentStreak += 1;
         profile.statistics.longestStreak = Math.max(
-          profile.statistics.longestStreak, 
+          profile.statistics.longestStreak,
           profile.statistics.currentStreak
         );
       } else {
@@ -426,7 +434,7 @@ export class GamificationService {
   private async checkStreakAchievements(userId: string, subredditName: string, currentStreak: number): Promise<void> {
     try {
       const streakMilestones = [7, 30, 100, 365];
-      
+
       for (const milestone of streakMilestones) {
         if (currentStreak === milestone) {
           const streakBadge: Badge = {
@@ -459,7 +467,7 @@ export class GamificationService {
   async awardBadge(params: BadgeAwardParams, badge?: Badge): Promise<boolean> {
     try {
       const { userId, badgeId, subredditName, reason } = params;
-      
+
       const profile = await this.getUserProfile(userId, subredditName);
       if (!profile) return false;
 
@@ -505,7 +513,7 @@ export class GamificationService {
       await this.logBadgeAward(userId, subredditName, badgeToAward, reason);
 
       console.log(`Awarded ${badgeToAward.rarity} badge "${badgeToAward.name}" to ${profile.username} (+${reputationBonus} reputation)`);
-      
+
       return true;
 
     } catch (error) {
@@ -530,13 +538,13 @@ export class GamificationService {
   /**
    * Get badge definition by ID
    */
-  private async getBadgeDefinition(badgeId: string): Promise<Badge | null> {
+  private async getBadgeDefinition(badgeId: string): Promise<Badge | undefined> {
     try {
       const badgeData = await this.context.redis.get(`badge:${badgeId}`);
-      return badgeData ? JSON.parse(badgeData) : null;
+      return badgeData ? JSON.parse(badgeData) : undefined;
     } catch (error) {
       console.error('Failed to get badge definition:', error);
-      return null;
+      return undefined;
     }
   }
 
@@ -547,11 +555,14 @@ export class GamificationService {
     try {
       const logKey = `user:${userId}:reputation_log:${subredditName}`;
       const logEntry = JSON.stringify(change);
-      
-      // Add to list (keep last 100 entries)
-      await this.context.redis.lpush(logKey, logEntry);
-      await this.context.redis.ltrim(logKey, 0, 99);
-      
+
+      // Add to list (keep last 100 entries) using key-value storage
+      const existingLog = await this.context.redis.get(logKey);
+      const logEntries = existingLog ? JSON.parse(existingLog) : [];
+      logEntries.unshift(logEntry); // Add to beginning
+      const trimmedLog = logEntries.slice(0, 100); // Keep last 100
+      await this.context.redis.set(logKey, JSON.stringify(trimmedLog));
+
     } catch (error) {
       console.error('Failed to log reputation change:', error);
     }
@@ -568,11 +579,14 @@ export class GamificationService {
         reason,
         timestamp: Date.now()
       });
-      
-      // Add to list (keep last 50 entries)
-      await this.context.redis.lpush(logKey, logEntry);
-      await this.context.redis.ltrim(logKey, 0, 49);
-      
+
+      // Add to list (keep last 50 entries) using key-value storage
+      const existingLog = await this.context.redis.get(logKey);
+      const logEntries = existingLog ? JSON.parse(existingLog) : [];
+      logEntries.unshift(logEntry); // Add to beginning
+      const trimmedLog = logEntries.slice(0, 50); // Keep last 50
+      await this.context.redis.set(logKey, JSON.stringify(trimmedLog));
+
     } catch (error) {
       console.error('Failed to log badge award:', error);
     }
@@ -693,9 +707,10 @@ export class GamificationService {
   async getReputationHistory(userId: string, subredditName: string, limit: number = 20): Promise<any[]> {
     try {
       const logKey = `user:${userId}:reputation_log:${subredditName}`;
-      const logEntries = await this.context.redis.lrange(logKey, 0, limit - 1);
-      
-      return logEntries.map(entry => JSON.parse(entry));
+      const logData = await this.context.redis.get(logKey);
+      const logEntries = logData ? JSON.parse(logData) : [];
+
+      return logEntries.slice(0, limit).map((entry: any) => JSON.parse(entry));
     } catch (error) {
       console.error('Failed to get reputation history:', error);
       return [];
@@ -708,9 +723,10 @@ export class GamificationService {
   async getBadgeHistory(userId: string, subredditName: string, limit: number = 20): Promise<any[]> {
     try {
       const logKey = `user:${userId}:badge_log:${subredditName}`;
-      const logEntries = await this.context.redis.lrange(logKey, 0, limit - 1);
-      
-      return logEntries.map(entry => JSON.parse(entry));
+      const logData = await this.context.redis.get(logKey);
+      const logEntries = logData ? JSON.parse(logData) : [];
+
+      return logEntries.slice(0, limit).map((entry: any) => JSON.parse(entry));
     } catch (error) {
       console.error('Failed to get badge history:', error);
       return [];
@@ -728,11 +744,18 @@ export class GamificationService {
   async initializeDefaultAchievements(subredditName: string): Promise<void> {
     try {
       const defaultAchievements = this.getDefaultAchievements();
-      
+
       for (const achievement of defaultAchievements) {
         const achievementKey = `achievement:${achievement.id}`;
         await this.context.redis.set(achievementKey, JSON.stringify(achievement));
-        await this.context.redis.sadd(`subreddit:${subredditName}:achievements`, achievement.id);
+        // Add to achievements list using key-value storage
+        const achievementsKey = `subreddit:${subredditName}:achievements`;
+        const existingAchievements = await this.context.redis.get(achievementsKey);
+        const achievementsList = existingAchievements ? JSON.parse(existingAchievements) : [];
+        if (!achievementsList.includes(achievement.id)) {
+          achievementsList.push(achievement.id);
+          await this.context.redis.set(achievementsKey, JSON.stringify(achievementsList));
+        }
       }
 
       console.log(`Initialized ${defaultAchievements.length} default achievements for ${subredditName}`);
@@ -930,20 +953,22 @@ export class GamificationService {
       if (!profile) return;
 
       // Get all achievements for this subreddit
-      const achievementIds = await this.context.redis.smembers(`subreddit:${subredditName}:achievements`);
-      
+      const achievementsKey = `subreddit:${subredditName}:achievements`;
+      const achievementsData = await this.context.redis.get(achievementsKey);
+      const achievementIds = achievementsData ? JSON.parse(achievementsData) : [];
+
       for (const achievementId of achievementIds) {
         const achievementData = await this.context.redis.get(`achievement:${achievementId}`);
         if (!achievementData) continue;
 
         const achievement: Achievement = JSON.parse(achievementData);
-        
+
         // Skip if already completed
         if (achievement.isCompleted) continue;
 
         // Update achievement progress based on user statistics
         const updatedAchievement = updateAchievementProgress(achievement, profile.statistics);
-        
+
         // Check if achievement was just completed
         if (updatedAchievement.isCompleted && !achievement.isCompleted) {
           await this.completeAchievement(userId, subredditName, updatedAchievement);
@@ -1064,8 +1089,13 @@ export class GamificationService {
   private async unlockFeature(userId: string, subredditName: string, feature: string): Promise<void> {
     try {
       const featureKey = `user:${userId}:features:${subredditName}`;
-      await this.context.redis.sadd(featureKey, feature);
-      
+      const existingFeatures = await this.context.redis.get(featureKey);
+      const featuresList = existingFeatures ? JSON.parse(existingFeatures) : [];
+      if (!featuresList.includes(feature)) {
+        featuresList.push(feature);
+        await this.context.redis.set(featureKey, JSON.stringify(featuresList));
+      }
+
       console.log(`Unlocked feature "${feature}" for user ${userId} in ${subredditName}`);
     } catch (error) {
       console.error('Failed to unlock feature:', error);
@@ -1078,7 +1108,8 @@ export class GamificationService {
   async getUserFeatures(userId: string, subredditName: string): Promise<string[]> {
     try {
       const featureKey = `user:${userId}:features:${subredditName}`;
-      return await this.context.redis.smembers(featureKey);
+      const featuresData = await this.context.redis.get(featureKey);
+      return featuresData ? JSON.parse(featuresData) : [];
     } catch (error) {
       console.error('Failed to get user features:', error);
       return [];
@@ -1091,7 +1122,7 @@ export class GamificationService {
   async createCustomAchievement(subredditName: string, achievement: Omit<Achievement, 'id' | 'isCompleted' | 'completedAt'>): Promise<Achievement> {
     try {
       const achievementId = `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
+
       const newAchievement: Achievement = {
         id: achievementId,
         ...achievement,
@@ -1101,10 +1132,17 @@ export class GamificationService {
 
       // Store achievement definition
       await this.context.redis.set(`achievement:${achievementId}`, JSON.stringify(newAchievement));
-      await this.context.redis.sadd(`subreddit:${subredditName}:achievements`, achievementId);
+      // Add to achievements list using key-value storage
+      const achievementsKey = `subreddit:${subredditName}:achievements`;
+      const existingAchievements = await this.context.redis.get(achievementsKey);
+      const achievementsList = existingAchievements ? JSON.parse(existingAchievements) : [];
+      if (!achievementsList.includes(achievementId)) {
+        achievementsList.push(achievementId);
+        await this.context.redis.set(achievementsKey, JSON.stringify(achievementsList));
+      }
 
       console.log(`Created custom achievement "${newAchievement.name}" for ${subredditName}`);
-      
+
       return newAchievement;
 
     } catch (error) {
@@ -1118,7 +1156,9 @@ export class GamificationService {
    */
   async getSubredditAchievements(subredditName: string): Promise<Achievement[]> {
     try {
-      const achievementIds = await this.context.redis.smembers(`subreddit:${subredditName}:achievements`);
+      const achievementsKey = `subreddit:${subredditName}:achievements`;
+      const achievementsData = await this.context.redis.get(achievementsKey);
+      const achievementIds = achievementsData ? JSON.parse(achievementsData) : [];
       const achievements: Achievement[] = [];
 
       for (const achievementId of achievementIds) {
@@ -1162,7 +1202,7 @@ export class GamificationService {
 
       // Update progress before returning
       await this.trackAchievementProgress(userId, subredditName);
-      
+
       // Get updated profile
       const updatedProfile = await this.getUserProfile(userId, subredditName);
       return updatedProfile?.achievements || [];
@@ -1180,7 +1220,7 @@ export class GamificationService {
     try {
       const badgeDefinitions = this.getAutomaticBadgeDefinitions();
       const badgeConfig = badgeDefinitions[badgeType];
-      
+
       if (!badgeConfig) {
         console.warn(`Unknown automatic badge type: ${badgeType}`);
         return;
@@ -1278,13 +1318,13 @@ export class GamificationService {
 
       // Check sentence badges
       await this.awardAutomaticBadge(userId, subredditName, 'sentences', stats.totalSentences);
-      
+
       // Check vote badges
       await this.awardAutomaticBadge(userId, subredditName, 'votes', stats.totalVotes);
-      
+
       // Check reputation badges
       await this.awardAutomaticBadge(userId, subredditName, 'reputation', stats.totalReputation);
-      
+
       // Check streak badges
       await this.awardAutomaticBadge(userId, subredditName, 'streak', stats.longestStreak);
 
@@ -1358,12 +1398,14 @@ export class GamificationService {
   async generateMonthlyLeaderboard(options: LeaderboardOptions): Promise<LeaderboardEntry[]> {
     try {
       const { subredditName, category = 'overall', period = 'monthly', limit = 50, offset = 0 } = options;
-      
+
       // Get time range for the period
       const timeRange = this.getTimeRangeForPeriod(period);
-      
+
       // Get all users in the subreddit
-      const userIds = await this.context.redis.smembers(`subreddit:${subredditName}:users`);
+      const usersKey = `subreddit:${subredditName}:users`;
+      const usersData = await this.context.redis.get(usersKey);
+      const userIds = usersData ? JSON.parse(usersData) : [];
       const leaderboardEntries: Array<{
         userId: string;
         username: string;
@@ -1377,7 +1419,7 @@ export class GamificationService {
 
         // Calculate score based on category and period
         const score = await this.calculateLeaderboardScore(userId, subredditName, category, timeRange);
-        
+
         if (score > 0) {
           leaderboardEntries.push({
             userId,
@@ -1422,25 +1464,25 @@ export class GamificationService {
   private getTimeRangeForPeriod(period: 'daily' | 'weekly' | 'monthly' | 'all-time'): { start: number; end: number } {
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
-    
+
     switch (period) {
       case 'daily':
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         return { start: startOfDay.getTime(), end: now };
-        
+
       case 'weekly':
         const startOfWeek = new Date();
         startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
         startOfWeek.setHours(0, 0, 0, 0);
         return { start: startOfWeek.getTime(), end: now };
-        
+
       case 'monthly':
         const startOfMonth = new Date();
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
         return { start: startOfMonth.getTime(), end: now };
-        
+
       case 'all-time':
       default:
         return { start: 0, end: now };
@@ -1451,9 +1493,9 @@ export class GamificationService {
    * Calculate leaderboard score based on category and time period
    */
   private async calculateLeaderboardScore(
-    userId: string, 
-    subredditName: string, 
-    category: string, 
+    userId: string,
+    subredditName: string,
+    category: string,
     timeRange: { start: number; end: number }
   ): Promise<number> {
     try {
@@ -1478,7 +1520,7 @@ export class GamificationService {
           score += profile.statistics.storiesStarted * 15;
           score += profile.statistics.storiesCompleted * 25;
           score += profile.statistics.branchesCreated * 10;
-          
+
           // Bonus for storytelling badges
           const storytellingBadges = profile.badges.filter(b => b.category === 'storytelling');
           score += storytellingBadges.length * 20;
@@ -1489,7 +1531,7 @@ export class GamificationService {
           score += profile.statistics.totalVotes * 2;
           score += profile.statistics.currentStreak * 5;
           score += profile.statistics.daysActive * 3;
-          
+
           // Bonus for community badges
           const communityBadges = profile.badges.filter(b => b.category === 'community');
           score += communityBadges.length * 15;
@@ -1499,11 +1541,11 @@ export class GamificationService {
           // Focus on quality contributions
           score += profile.reputation * 0.8;
           score += profile.statistics.averageVoteScore * 50;
-          
+
           // Bonus for quality badges
           const qualityBadges = profile.badges.filter(b => b.category === 'quality');
           score += qualityBadges.length * 30;
-          
+
           // Penalty for low average scores
           if (profile.statistics.averageVoteScore < 0) {
             score *= 0.5;
@@ -1531,40 +1573,40 @@ export class GamificationService {
    * Apply time-based scoring for period leaderboards
    */
   private async applyTimeBasedScoring(
-    userId: string, 
-    subredditName: string, 
-    baseScore: number, 
+    userId: string,
+    subredditName: string,
+    baseScore: number,
     timeRange: { start: number; end: number }
   ): Promise<number> {
     try {
       // Get activity within the time range
       let periodScore = 0;
-      
+
       // Check daily activity within the period
       const daysInPeriod = Math.ceil((timeRange.end - timeRange.start) / (24 * 60 * 60 * 1000));
       let activeDaysInPeriod = 0;
-      
+
       for (let i = 0; i < daysInPeriod; i++) {
         const checkDate = new Date(timeRange.start + (i * 24 * 60 * 60 * 1000));
         const activityKey = `user:${userId}:activity:${subredditName}:${checkDate.toDateString()}`;
         const wasActive = await this.context.redis.get(activityKey);
-        
+
         if (wasActive) {
           activeDaysInPeriod++;
         }
       }
-      
+
       // Calculate period-specific score
       const activityRatio = activeDaysInPeriod / daysInPeriod;
       periodScore = baseScore * activityRatio;
-      
+
       // Bonus for consistent activity
       if (activityRatio > 0.8) {
         periodScore *= 1.2; // 20% bonus for high activity
       } else if (activityRatio > 0.5) {
         periodScore *= 1.1; // 10% bonus for moderate activity
       }
-      
+
       return periodScore;
 
     } catch (error) {
@@ -1580,7 +1622,7 @@ export class GamificationService {
     try {
       const { subredditName, category = 'overall', period = 'monthly' } = options;
       const leaderboardKey = `leaderboard:${subredditName}:${category}:${period}`;
-      
+
       // Try to get cached leaderboard
       const cachedLeaderboard = await this.context.redis.get(leaderboardKey);
       if (cachedLeaderboard) {
@@ -1606,7 +1648,7 @@ export class GamificationService {
   } | null> {
     try {
       const { subredditName, category = 'overall', period = 'monthly' } = options;
-      
+
       // Get full leaderboard (without limit)
       const fullLeaderboard = await this.generateMonthlyLeaderboard({
         ...options,
@@ -1615,7 +1657,7 @@ export class GamificationService {
       });
 
       const userEntry = fullLeaderboard.find(entry => entry.userId === userId);
-      
+
       if (!userEntry) {
         return null;
       }
@@ -1640,7 +1682,7 @@ export class GamificationService {
    */
   async getCategoryLeaderboards(subredditName: string, period: 'daily' | 'weekly' | 'monthly' | 'all-time' = 'monthly'): Promise<Record<string, LeaderboardEntry[]>> {
     try {
-      const categories = ['overall', 'storytelling', 'community', 'quality'];
+      const categories: Array<'overall' | 'storytelling' | 'community' | 'quality'> = ['overall', 'storytelling', 'community', 'quality'];
       const leaderboards: Record<string, LeaderboardEntry[]> = {};
 
       for (const category of categories) {
@@ -1666,7 +1708,7 @@ export class GamificationService {
   async getLeaderboardWithChanges(options: LeaderboardOptions): Promise<LeaderboardEntry[]> {
     try {
       const currentLeaderboard = await this.getLeaderboard(options);
-      
+
       // Get previous period leaderboard for comparison
       const previousPeriod = this.getPreviousPeriod(options.period || 'monthly');
       const previousOptions = { ...options, period: previousPeriod };
@@ -1676,7 +1718,7 @@ export class GamificationService {
       const leaderboardWithChanges = currentLeaderboard.map(entry => {
         const previousEntry = previousLeaderboard.find(prev => prev.userId === entry.userId);
         const change = previousEntry ? previousEntry.rank - entry.rank : 0;
-        
+
         return {
           ...entry,
           change
@@ -1753,9 +1795,11 @@ export class GamificationService {
     averageReputation: number;
   }> {
     try {
-      const userIds = await this.context.redis.smembers(`subreddit:${subredditName}:users`);
+      const usersKey = `subreddit:${subredditName}:users`;
+      const usersData = await this.context.redis.get(usersKey);
+      const userIds = usersData ? JSON.parse(usersData) : [];
       const totalUsers = userIds.length;
-      
+
       if (totalUsers === 0) {
         return {
           totalUsers: 0,
@@ -1806,8 +1850,10 @@ export class GamificationService {
     totalAchievements: number;
   }> {
     try {
-      const userIds = await this.context.redis.smembers(`subreddit:${subredditName}:users`);
-      
+      const usersKey = `subreddit:${subredditName}:users`;
+      const usersData = await this.context.redis.get(usersKey);
+      const userIds = usersData ? JSON.parse(usersData) : [];
+
       let totalReputation = 0;
       let topReputation = 0;
       let activeUsers = 0;
@@ -1865,10 +1911,10 @@ export class GamificationService {
   }> {
     try {
       const [overall, storytelling, community, quality, risingStars, stats] = await Promise.all([
-        this.getLeaderboard({ subredditName, category: 'overall', limit: 10 }),
-        this.getLeaderboard({ subredditName, category: 'storytelling', limit: 10 }),
-        this.getLeaderboard({ subredditName, category: 'community', limit: 10 }),
-        this.getLeaderboard({ subredditName, category: 'quality', limit: 10 }),
+        this.getLeaderboard({ subredditName, category: 'overall' as const, limit: 10 }),
+        this.getLeaderboard({ subredditName, category: 'storytelling' as const, limit: 10 }),
+        this.getLeaderboard({ subredditName, category: 'community' as const, limit: 10 }),
+        this.getLeaderboard({ subredditName, category: 'quality' as const, limit: 10 }),
         this.getRisingStars(subredditName, 5),
         this.getLeaderboardStats(subredditName)
       ]);
@@ -1908,11 +1954,11 @@ export class GamificationService {
           // Clear cached leaderboard to force regeneration
           const leaderboardKey = `leaderboard:${subredditName}:${category}:${period}`;
           await this.context.redis.del(leaderboardKey);
-          
+
           // Generate fresh leaderboard
           await this.generateMonthlyLeaderboard({
             subredditName,
-            category,
+            category: category as 'overall' | 'storytelling' | 'community' | 'quality',
             period: period as any,
             limit: 100
           });

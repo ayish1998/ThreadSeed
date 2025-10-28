@@ -1,6 +1,7 @@
+//src/components/CollaborationPanel.tsx
 import { Devvit } from '@devvit/public-api';
 import { useState, useEffect } from 'react';
-import { ActiveUser, TypingIndicator, ActivityEvent, StoryActivity } from '../services/notificationService.js';
+import { ActiveUser, ActivityEvent, StoryActivity } from '../services/notificationService.js';
 
 interface CollaborationPanelProps {
   storyId: string;
@@ -20,11 +21,11 @@ interface UserInteraction {
  * CollaborationPanel component for real-time collaboration features
  * Implements requirements 5.1 (typing indicators) and 5.5 (live participant counts)
  */
-export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> = ({ 
-  storyId, 
-  currentUserId, 
+export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> = ({
+  storyId,
+  currentUserId,
   notificationService,
-  onUserInteraction 
+  onUserInteraction
 }) => {
   const [storyActivity, setStoryActivity] = useState<StoryActivity>({
     storyId,
@@ -58,7 +59,7 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
       try {
         const activity = await notificationService.getStoryActivity(storyId);
         setStoryActivity(activity);
-        
+
         // Send heartbeat
         await notificationService.sendHeartbeat(currentUserId, storyId);
       } catch (error) {
@@ -73,13 +74,13 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
   const handleStartTyping = async () => {
     if (!isTyping) {
       setIsTyping(true);
-      
+
       try {
         const currentUser = storyActivity.activeUsers.find(u => u.userId === currentUserId);
         const username = currentUser?.username || 'Anonymous';
-        
+
         await notificationService.startTyping(currentUserId, username, storyId);
-        
+
         onUserInteraction?.({
           type: 'start_typing',
           userId: currentUserId,
@@ -105,13 +106,13 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
   const handleStopTyping = async () => {
     if (isTyping) {
       setIsTyping(false);
-      
+
       try {
         const currentUser = storyActivity.activeUsers.find(u => u.userId === currentUserId);
         const username = currentUser?.username || 'Anonymous';
-        
+
         await notificationService.stopTyping(currentUserId, username, storyId);
-        
+
         onUserInteraction?.({
           type: 'stop_typing',
           userId: currentUserId,
@@ -134,9 +135,9 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
       try {
         const currentUser = storyActivity.activeUsers.find(u => u.userId === currentUserId);
         const username = currentUser?.username || 'Anonymous';
-        
+
         await notificationService.joinStory(currentUserId, username, storyId);
-        
+
         onUserInteraction?.({
           type: 'join',
           userId: currentUserId,
@@ -155,9 +156,9 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
         try {
           const currentUser = storyActivity.activeUsers.find(u => u.userId === currentUserId);
           const username = currentUser?.username || 'Anonymous';
-          
+
           await notificationService.leaveStory(currentUserId, username, storyId);
-          
+
           onUserInteraction?.({
             type: 'leave',
             userId: currentUserId,
@@ -188,7 +189,7 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
   const formatActivityEvent = (event: ActivityEvent): string => {
     const timeAgo = Math.floor((Date.now() - event.timestamp) / 1000);
     const timeStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.floor(timeAgo / 60)}m ago`;
-    
+
     switch (event.type) {
       case 'user_joined':
         return `${event.username} joined • ${timeStr}`;
@@ -215,13 +216,13 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
             ({storyActivity.activeUsers.length} of {storyActivity.totalParticipants} total)
           </text>
         </hstack>
-        
+
         {storyActivity.activeUsers.length > 0 ? (
-          <vstack gap="xsmall">
+          <vstack gap="small">
             {storyActivity.activeUsers.map((user) => (
               <hstack key={user.userId} alignment="middle" gap="small">
                 <text size="small" weight="bold">{user.username}</text>
-                <text size="xsmall" color="secondary">
+                <text size="small" color="secondary">
                   {formatActivityStatus(user)}
                 </text>
               </hstack>
@@ -236,18 +237,18 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
       {storyActivity.typingUsers.length > 0 && (
         <vstack gap="small">
           <text size="medium" weight="bold">✏️ Currently Typing</text>
-          <vstack gap="xsmall">
+          <vstack gap="small">
             {storyActivity.typingUsers
               .filter(indicator => indicator.userId !== currentUserId)
               .map((indicator) => (
                 <hstack key={indicator.userId} alignment="middle" gap="small">
                   <text size="small">{indicator.username}</text>
-                  <text size="xsmall" color="secondary">is typing...</text>
-                  {indicator.branchId && (
-                    <text size="xsmall" color="secondary">
+                  <text size="small" color="secondary">is typing...</text>
+                  {indicator.branchId ? (
+                    <text size="small" color="secondary">
                       in branch {indicator.branchId.slice(0, 8)}
                     </text>
-                  )}
+                  ) : null}
                 </hstack>
               ))}
           </vstack>
@@ -258,9 +259,9 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
       <vstack gap="small">
         <text size="medium" weight="bold">📈 Recent Activity</text>
         {storyActivity.recentActivity.length > 0 ? (
-          <vstack gap="xsmall">
+          <vstack gap="small">
             {storyActivity.recentActivity.slice(0, 5).map((event) => (
-              <text key={event.id} size="xsmall" color="secondary">
+              <text key={event.id} size="small" color="secondary">
                 {formatActivityEvent(event)}
               </text>
             ))}
@@ -276,16 +277,16 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
           Start typing to let others know you're composing...
         </text>
         <hstack gap="small">
-          <button 
-            appearance="secondary" 
+          <button
+            appearance="secondary"
             size="small"
             onPress={handleStartTyping}
             disabled={isTyping}
           >
             {isTyping ? 'Typing...' : 'Start Typing'}
           </button>
-          <button 
-            appearance="secondary" 
+          <button
+            appearance="secondary"
             size="small"
             onPress={handleStopTyping}
             disabled={!isTyping}
@@ -297,10 +298,10 @@ export const CollaborationPanel: Devvit.BlockComponent<CollaborationPanelProps> 
 
       {/* Connection Status */}
       <hstack alignment="middle" gap="small">
-        <text size="xsmall" color="secondary">
+        <text size="small" color="secondary">
           Last updated: {new Date(storyActivity.lastUpdated).toLocaleTimeString()}
         </text>
-        <text size="xsmall" color="success">🟢 Connected</text>
+        <text size="small" color="success">🟢 Connected</text>
       </hstack>
     </vstack>
   );

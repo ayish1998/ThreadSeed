@@ -1,3 +1,4 @@
+//src/components/BranchTree.tsx
 import { Devvit } from '@devvit/public-api';
 import { BranchTree, BranchTreeNode, StoryBranch } from '../types/story.js';
 
@@ -30,10 +31,10 @@ const BranchNode: Devvit.BlockComponent<BranchNodeProps> = ({
   const { branch } = node;
   const isSelected = currentBranchId === branch.id;
   const isActive = branch.isActive;
-  
+
   // Calculate indentation based on tree level
   const indentWidth = level * 20;
-  
+
   // Branch status indicator
   const getStatusColor = () => {
     if (!isActive) return '#666666';
@@ -60,8 +61,8 @@ const BranchNode: Devvit.BlockComponent<BranchNodeProps> = ({
   return (
     <vstack gap="small" padding="small">
       {/* Branch node */}
-      <hstack 
-        gap="medium" 
+      <hstack
+        gap="medium"
         alignment="center middle"
         padding="medium"
         backgroundColor={isSelected ? '#E3F2FD' : 'transparent'}
@@ -72,62 +73,62 @@ const BranchNode: Devvit.BlockComponent<BranchNodeProps> = ({
       >
         {/* Indentation spacer */}
         {level > 0 && <spacer width={indentWidth} />}
-        
+
         {/* Branch type icon */}
         <text size="medium">{getBranchTypeIcon()}</text>
-        
+
         {/* Branch info */}
-        <vstack gap="xsmall" grow>
+        <vstack gap="small" grow>
           <hstack gap="small" alignment="center middle">
-            <text 
-              size="medium" 
-              weight="bold" 
+            <text
+              size="medium"
+              weight="bold"
               color={isSelected ? '#0079D3' : '#1A1A1B'}
             >
               {branch.name}
             </text>
-            <text 
-              size="small" 
+            <text
+              size="small"
               color={getStatusColor()}
               weight="bold"
             >
               {getStatusText()}
             </text>
           </hstack>
-          
+
           <text size="small" color="#7C7C83">
             {branch.description}
           </text>
-          
+
           {/* Branch metrics */}
           <hstack gap="medium" alignment="center middle">
-            <text size="xsmall" color="#7C7C83">
+            <text size="small" color="#7C7C83">
               👥 {branch.childBranches.length} branches
             </text>
-            <text size="xsmall" color="#7C7C83">
+            <text size="small" color="#7C7C83">
               ⭐ {branch.popularity} popularity
             </text>
-            <text size="xsmall" color="#7C7C83">
+            <text size="small" color="#7C7C83">
               📅 {new Date(branch.createdAt).toLocaleDateString()}
             </text>
           </hstack>
         </vstack>
-        
+
         {/* Create branch button */}
-        {showCreateButton && isActive && onCreateBranch && (
-          <button 
+        {showCreateButton && isActive && onCreateBranch ? (
+          <button
             appearance="secondary"
             size="small"
             onPress={() => onCreateBranch(branch.id)}
           >
             + Branch
           </button>
-        )}
+        ) : null}
       </hstack>
-      
+
       {/* Child branches */}
       {node.children.length > 0 && (
-        <vstack gap="xsmall" padding="small">
+        <vstack gap="small" padding="small">
           {/* Connection line */}
           {level > 0 && (
             <hstack>
@@ -135,11 +136,10 @@ const BranchNode: Devvit.BlockComponent<BranchNodeProps> = ({
               <vstack height="20px" width="2px" backgroundColor="#E0E0E0" />
             </hstack>
           )}
-          
+
           {/* Render child nodes */}
           {node.children.map((childNode) => (
             <BranchNode
-              key={childNode.branch.id}
               node={childNode}
               currentBranchId={currentBranchId}
               onBranchSelect={onBranchSelect}
@@ -180,21 +180,20 @@ export const BranchTreeComponent: Devvit.BlockComponent<BranchTreeProps> = ({
       <hstack gap="medium" alignment="center middle" padding="medium">
         <text size="large" weight="bold">🌳 Story Branches</text>
         <spacer grow />
-        <vstack gap="xsmall" alignment="end">
+        <vstack gap="small" alignment="end">
           <text size="small" color="#7C7C83">
             {branchTree.activeBranches} active / {branchTree.totalBranches} total
           </text>
-          <text size="xsmall" color="#7C7C83">
+          <text size="small" color="#7C7C83">
             Max depth: {branchTree.maxDepth}
           </text>
         </vstack>
       </hstack>
-      
+
       {/* Branch tree visualization */}
       <vstack gap="small" backgroundColor="#FAFAFA" cornerRadius="medium" padding="medium">
         {branchTree.branches.map((rootNode) => (
           <BranchNode
-            key={rootNode.branch.id}
             node={rootNode}
             currentBranchId={currentBranchId}
             onBranchSelect={onBranchSelect}
@@ -204,20 +203,20 @@ export const BranchTreeComponent: Devvit.BlockComponent<BranchTreeProps> = ({
           />
         ))}
       </vstack>
-      
+
       {/* Tree legend */}
       <hstack gap="large" alignment="center middle" padding="small">
         <hstack gap="small" alignment="center middle">
           <text size="small">🔀</text>
-          <text size="xsmall" color="#7C7C83">Decision</text>
+          <text size="small" color="#7C7C83">Decision</text>
         </hstack>
         <hstack gap="small" alignment="center middle">
           <text size="small">🔄</text>
-          <text size="xsmall" color="#7C7C83">Alternative</text>
+          <text size="small" color="#7C7C83">Alternative</text>
         </hstack>
         <hstack gap="small" alignment="center middle">
           <text size="small">🧪</text>
-          <text size="xsmall" color="#7C7C83">Experimental</text>
+          <text size="small" color="#7C7C83">Experimental</text>
         </hstack>
       </hstack>
     </vstack>

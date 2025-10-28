@@ -1,28 +1,41 @@
-# 🧵 ThreadSeed
+# 📖 ThreadSmith
 
-**Collaborative storytelling that brings Reddit communities together**
+**Simplified collaborative storytelling for Reddit communities**
 
-ThreadSeed transforms any subreddit into a collaborative storytelling engine where users contribute one sentence at a time to build epic narratives together. With community voting and branching storylines, it creates unique content that belongs to the entire community.
+ThreadSmith enables Reddit communities to create collaborative stories where users contribute chapters through comments, vote with Reddit upvotes, and automatically generate professional PDFs of completed stories. Built for the Reddit x Kiro Community Games Challenge 2025.
 
 ## 🎯 Hackathon Categories
 
 - **Community Play**: Massively multiplayer storytelling with voting mechanics
 - **Best Kiro Developer Experience**: Showcasing creative Kiro integrations
 
-## ✨ Features
+## ✨ Core Features (MVP)
 
-### Core Gameplay
-- **One-sentence contributions** - Easy participation for all skill levels
-- **Community voting** - Upvote/downvote system ensures quality
-- **Branching narratives** - Stories can split into multiple paths
-- **Real-time collaboration** - See stories evolve live
-- **Subreddit integration** - Themed templates for different communities
+### 1. Story Creation
+- **Simple form** - Title, genre, opening paragraph, duration
+- **Interactive posts** - Stories become engaging Reddit posts
+- **Automated setup** - Bot creates pinned instructions
 
-### Community Features
-- **Author spotlights** - Highlight prolific contributors
-- **Story tournaments** - Competing narrative threads
-- **Cross-posting** - Finished stories auto-post to relevant subs
-- **Moderator tools** - Content filtering and story archiving
+### 2. Contribution System
+- **Comment-based** - Reply with "CONTRIBUTION: [text]"
+- **Word validation** - 300-500 words per contribution
+- **One per round** - Fair participation for all users
+
+### 3. Voting System
+- **Native Reddit upvotes** - Uses familiar voting mechanism
+- **Automated winner selection** - Scheduler picks highest voted
+- **24-hour rounds** - Clear voting windows (2 min in dev)
+
+### 4. Story Hub
+- **Browse stories** - Filter by genre, sort by activity
+- **Real-time stats** - Contributors, chapters, time remaining
+- **Community dashboard** - Active and completed stories
+
+### 5. PDF Export ✨
+- **Automatic generation** - When stories complete
+- **Professional formatting** - Cover page and credits
+- **Contributor recognition** - Everyone gets credited
+- **Permanent artifacts** - Stories live beyond Reddit
 
 ## 🚀 Kiro Developer Experience Integration
 

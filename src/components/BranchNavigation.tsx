@@ -1,3 +1,4 @@
+//src/components/BranchNavigation.tsx
 import { Devvit } from '@devvit/public-api';
 import { StoryBranch, BranchTree } from '../types/story.js';
 
@@ -29,7 +30,7 @@ const BranchBreadcrumb: Devvit.BlockComponent<BreadcrumbProps> = ({
     <hstack gap="small" alignment="center middle" padding="small">
       <text size="small" color="#7C7C83">Path:</text>
       {branchPath.map((branch, index) => (
-        <hstack key={branch.id} gap="xsmall" alignment="center middle">
+        <hstack key={branch.id} gap="small" alignment="center">
           {index > 0 && (
             <text size="small" color="#7C7C83">→</text>
           )}
@@ -57,30 +58,30 @@ export const BranchNavigation: Devvit.BlockComponent<BranchNavigationProps> = ({
   // Find the current branch path from root to current branch
   const findBranchPath = (tree: BranchTree, targetBranchId: string): StoryBranch[] => {
     const path: StoryBranch[] = [];
-    
+
     const searchNode = (node: any): boolean => {
       path.push(node.branch);
-      
+
       if (node.branch.id === targetBranchId) {
         return true;
       }
-      
+
       for (const child of node.children) {
         if (searchNode(child)) {
           return true;
         }
       }
-      
+
       path.pop();
       return false;
     };
-    
+
     for (const rootNode of tree.branches) {
       if (searchNode(rootNode)) {
         break;
       }
     }
-    
+
     return path;
   };
 
@@ -90,26 +91,26 @@ export const BranchNavigation: Devvit.BlockComponent<BranchNavigationProps> = ({
       // Root branch - return all root branches
       return branchTree.branches.map(node => node.branch);
     }
-    
+
     // Find parent and return its children
     const findParentChildren = (node: any): StoryBranch[] | null => {
       if (node.branch.id === currentBranch.parentBranchId) {
         return node.children.map((child: any) => child.branch);
       }
-      
+
       for (const child of node.children) {
         const result = findParentChildren(child);
         if (result) return result;
       }
-      
+
       return null;
     };
-    
+
     for (const rootNode of branchTree.branches) {
       const siblings = findParentChildren(rootNode);
       if (siblings) return siblings;
     }
-    
+
     return [];
   };
 
@@ -119,22 +120,22 @@ export const BranchNavigation: Devvit.BlockComponent<BranchNavigationProps> = ({
       if (node.branch.id === currentBranch.id) {
         return node;
       }
-      
+
       for (const child of node.children) {
         const result = findCurrentNode(child);
         if (result) return result;
       }
-      
+
       return null;
     };
-    
+
     for (const rootNode of branchTree.branches) {
       const currentNode = findCurrentNode(rootNode);
       if (currentNode) {
         return currentNode.children.map((child: any) => child.branch);
       }
     }
-    
+
     return [];
   };
 
@@ -160,46 +161,46 @@ export const BranchNavigation: Devvit.BlockComponent<BranchNavigationProps> = ({
             {getBranchTypeIcon(currentBranch.branchType)} {currentBranch.name}
           </text>
           <spacer grow />
-          {showCreateButton && onCreateBranch && (
-            <button 
+          {showCreateButton && onCreateBranch ? (
+            <button
               appearance="primary"
               size="small"
               onPress={onCreateBranch}
             >
               + New Branch
             </button>
-          )}
+          ) : null}
         </hstack>
-        
+
         <text size="small" color="#7C7C83">
           {currentBranch.description}
         </text>
-        
+
         <hstack gap="large" alignment="center middle">
-          <text size="xsmall" color="#7C7C83">
+          <text size="small" color="#7C7C83">
             ⭐ {currentBranch.popularity} popularity
           </text>
-          <text size="xsmall" color="#7C7C83">
+          <text size="small" color="#7C7C83">
             👥 {currentBranch.childBranches.length} child branches
           </text>
-          <text size="xsmall" color="#7C7C83">
+          <text size="small" color="#7C7C83">
             📅 {new Date(currentBranch.createdAt).toLocaleDateString()}
           </text>
         </hstack>
       </vstack>
-      
+
       {/* Breadcrumb navigation */}
       <BranchBreadcrumb
         branchPath={branchPath}
         currentBranchId={currentBranch.id}
         onBranchSelect={onBranchSelect}
       />
-      
+
       {/* Sibling branches */}
       {siblingBranches.length > 1 && (
         <vstack gap="small">
           <text size="medium" weight="bold">Alternative Paths</text>
-          <hstack gap="small" wrap>
+          <hstack gap="small">
             {siblingBranches
               .filter(branch => branch.id !== currentBranch.id)
               .map(branch => (
@@ -215,12 +216,12 @@ export const BranchNavigation: Devvit.BlockComponent<BranchNavigationProps> = ({
           </hstack>
         </vstack>
       )}
-      
+
       {/* Child branches */}
       {childBranches.length > 0 && (
         <vstack gap="small">
           <text size="medium" weight="bold">Continue Story</text>
-          <hstack gap="small" wrap>
+          <hstack gap="small">
             {childBranches.map(branch => (
               <button
                 key={branch.id}
@@ -234,20 +235,20 @@ export const BranchNavigation: Devvit.BlockComponent<BranchNavigationProps> = ({
           </hstack>
         </vstack>
       )}
-      
+
       {/* Branch statistics */}
       <hstack gap="medium" alignment="center middle" padding="small" backgroundColor="#FFFFFF" cornerRadius="small">
-        <vstack alignment="center middle" gap="xsmall">
+        <vstack alignment="center" gap="small">
           <text size="small" weight="bold">{branchTree.totalBranches}</text>
-          <text size="xsmall" color="#7C7C83">Total Branches</text>
+          <text size="small" color="#7C7C83">Total Branches</text>
         </vstack>
-        <vstack alignment="center middle" gap="xsmall">
+        <vstack alignment="center" gap="small">
           <text size="small" weight="bold">{branchTree.activeBranches}</text>
-          <text size="xsmall" color="#7C7C83">Active</text>
+          <text size="small" color="#7C7C83">Active</text>
         </vstack>
-        <vstack alignment="center middle" gap="xsmall">
+        <vstack alignment="center" gap="small">
           <text size="small" weight="bold">{branchTree.maxDepth}</text>
-          <text size="xsmall" color="#7C7C83">Max Depth</text>
+          <text size="small" color="#7C7C83">Max Depth</text>
         </vstack>
       </hstack>
     </vstack>

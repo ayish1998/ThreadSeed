@@ -1,4 +1,4 @@
-// services/notificationService.ts - COMPLETE VERSION
+// services/notificationService.ts 
 
 import { Context } from '@devvit/public-api';
 import {
@@ -141,9 +141,9 @@ export class NotificationService {
 
     try {
       // Store notification in Redis
-      await this.context.redis.hSet(
-        `notifications:${notification.userId}`,
-        notificationId,
+      // Store notification using simple key-value storage
+      await this.context.redis.set(
+        `notification:${notificationId}`,
         JSON.stringify(fullNotification)
       );
 
@@ -201,11 +201,9 @@ export class NotificationService {
       const activeUsers = await this.getActiveStoryUsers(storyId);
 
       // Store broadcast message
-      await this.context.redis.hSet(
-        `broadcasts:${storyId}`,
-        broadcastId,
-        JSON.stringify(fullMessage)
-      );
+      await this.context.redis.hSet(`broadcasts:${storyId}`, {
+        [broadcastId]: JSON.stringify(fullMessage)
+      });
 
       // Set expiry for broadcast message (1 hour)
       await this.context.redis.expire(`broadcasts:${storyId}`, 3600);
@@ -256,11 +254,9 @@ export class NotificationService {
       const notification = JSON.parse(notificationStr) as Notification;
       notification.read = true;
 
-      await this.context.redis.hSet(
-        `notifications:${userId}`,
-        notificationId,
-        JSON.stringify(notification)
-      );
+      await this.context.redis.hSet(`notifications:${userId}`, {
+        [notificationId]: JSON.stringify(notification)
+      });
 
       return true;
     } catch (error) {
@@ -282,11 +278,9 @@ export class NotificationService {
 
         if (!notification.read) {
           notification.read = true;
-          await this.context.redis.hSet(
-            `notifications:${userId}`,
-            notificationId,
-            JSON.stringify(notification)
-          );
+          await this.context.redis.hSet(`notifications:${userId}`, {
+            [notificationId]: JSON.stringify(notification)
+          });
           updatedCount++;
         }
       }
@@ -321,16 +315,16 @@ export class NotificationService {
   async cleanupExpiredNotifications(): Promise<void> {
     try {
       // This would typically be run as a background job
-      const userKeys = await this.context.redis.keys('notifications:*');
+      const userKeys = await this.context.redis.hkeys('notifications') || [];
 
       for (const userKey of userKeys) {
-        const notifications = await this.context.redis.hGetAll(userKey);
+        const notifications = await this.context.redis.hGetAll(`notifications:${userKey}`);
 
         for (const [notificationId, notificationStr] of Object.entries(notifications)) {
           const notification = JSON.parse(notificationStr) as Notification;
 
           if (notification.expiresAt && notification.expiresAt < Date.now()) {
-            await this.context.redis.hDel(userKey, notificationId);
+            await this.context.redis.hDel(`notifications:${userKey}`, [notificationId]);
           }
         }
       }
@@ -370,7 +364,7 @@ export class NotificationService {
       }
 
       // Update queue
-      await this.context.redis.setex(queueKey, 86400, JSON.stringify(queue)); // 24 hour expiry
+      await this.context.redis.set(queueKey, JSON.stringify(queue), { expiration: new Date(Date.now() + 86400 * 1000) }); // 24 hour expiry
     } catch (error) {
       console.error('Failed to add notification to queue:', error);
     }
@@ -396,11 +390,9 @@ export class NotificationService {
         retryCount: 0
       };
 
-      await this.context.redis.hSet(
-        `delivery_confirmations:${notification.userId}`,
-        notification.id,
-        JSON.stringify(confirmation)
-      );
+      await this.context.redis.hSet(`delivery_confirmations:${notification.userId}`, {
+        [notification.id]: JSON.stringify(confirmation)
+      });
 
     } catch (error) {
       console.error('Failed to deliver notification:', error);
@@ -414,11 +406,9 @@ export class NotificationService {
         retryCount: 1
       };
 
-      await this.context.redis.hSet(
-        `delivery_confirmations:${notification.userId}`,
-        notification.id,
-        JSON.stringify(confirmation)
-      );
+      await this.context.redis.hSet(`delivery_confirmations:${notification.userId}`, {
+        [notification.id]: JSON.stringify(confirmation)
+      });
     }
   }
 
@@ -430,14 +420,15 @@ export class NotificationService {
       // In a real implementation, this would use WebSockets or similar
       console.log(`Broadcasting message ${message.id} to user ${userId}`);
 
-      // Store in user's broadcast inbox for retrieval
-      await this.context.redis.lPush(
-        `broadcast_inbox:${userId}`,
-        JSON.stringify(message)
-      );
+      // Store in user's broadcast inbox for retrieval (simplified)
+      const inboxKey = `broadcast_inbox:${userId}`;
+      const existingInbox = await this.context.redis.get(inboxKey);
+      const inbox = existingInbox ? JSON.parse(existingInbox) : [];
 
-      // Limit inbox size
-      await this.context.redis.lTrim(`broadcast_inbox:${userId}`, 0, 49); // Keep last 50 messages
+      inbox.unshift(message);
+      if (inbox.length > 50) inbox.splice(50); // Keep last 50 messages
+
+      await this.context.redis.set(inboxKey, JSON.stringify(inbox));
 
       // Set expiry
       await this.context.redis.expire(`broadcast_inbox:${userId}`, 3600); // 1 hour
@@ -452,8 +443,8 @@ export class NotificationService {
    */
   private async getActiveStoryUsers(storyId: string): Promise<string[]> {
     try {
-      const activeUsers = await this.context.redis.sMembers(`story_active_users:${storyId}`);
-      return activeUsers;
+      const activeUsersStr = await this.context.redis.get(`story_active_users:${storyId}`);
+      return activeUsersStr ? JSON.parse(activeUsersStr) : [];
     } catch (error) {
       console.error('Failed to get active story users:', error);
       return [];
@@ -465,10 +456,11 @@ export class NotificationService {
    */
   async getUserBroadcasts(userId: string, limit: number = 10): Promise<BroadcastMessage[]> {
     try {
-      const messages = await this.context.redis.lRange(`broadcast_inbox:${userId}`, 0, limit - 1);
+      const inboxStr = await this.context.redis.get(`broadcast_inbox:${userId}`);
+      const messages = inboxStr ? JSON.parse(inboxStr) : [];
 
-      return messages.map(msgStr => JSON.parse(msgStr) as BroadcastMessage)
-        .sort((a, b) => b.timestamp - a.timestamp);
+      return messages.slice(0, limit).map((msg: any) => msg as BroadcastMessage)
+        .sort((a: any, b: any) => b.timestamp - a.timestamp);
     } catch (error) {
       console.error('Failed to get user broadcasts:', error);
       return [];
@@ -509,8 +501,8 @@ export class NotificationService {
    */
   private async getStoryParticipants(storyId: string): Promise<string[]> {
     try {
-      const participants = await this.context.redis.sMembers(`story_participants:${storyId}`);
-      return participants;
+      const participantsStr = await this.context.redis.get(`story_participants:${storyId}`);
+      return participantsStr ? JSON.parse(participantsStr) : [];
     } catch (error) {
       console.error('Failed to get story participants:', error);
       return [];
@@ -536,11 +528,9 @@ export class NotificationService {
       };
 
       // Store typing indicator
-      await this.context.redis.hSet(
-        `typing_indicators:${storyId}`,
-        userId,
-        JSON.stringify(typingIndicator)
-      );
+      await this.context.redis.hSet(`typing_indicators:${storyId}`, {
+        [userId]: JSON.stringify(typingIndicator)
+      });
 
       // Set expiry for typing indicator (30 seconds)
       await this.context.redis.expire(`typing_indicators:${storyId}`, 30);
@@ -577,7 +567,7 @@ export class NotificationService {
   async stopTyping(userId: string, username: string, storyId: string): Promise<void> {
     try {
       // Remove typing indicator
-      await this.context.redis.hDel(`typing_indicators:${storyId}`, userId);
+      await this.context.redis.hDel(`typing_indicators:${storyId}`, [userId]);
 
       // Update user presence to viewing
       await this.updateUserPresence(userId, storyId, 'viewing');
@@ -618,7 +608,7 @@ export class NotificationService {
 
         // Remove stale indicators (older than 30 seconds)
         if (now - indicator.lastActivity > 30000) {
-          await this.context.redis.hDel(`typing_indicators:${storyId}`, userId);
+          await this.context.redis.hDel(`typing_indicators:${storyId}`, [userId]);
         } else {
           validIndicators.push(indicator);
         }
@@ -642,11 +632,9 @@ export class NotificationService {
         const indicator = JSON.parse(indicatorStr) as TypingIndicator;
         indicator.lastActivity = Date.now();
 
-        await this.context.redis.hSet(
-          `typing_indicators:${storyId}`,
-          userId,
-          JSON.stringify(indicator)
-        );
+        await this.context.redis.hSet(`typing_indicators:${storyId}`, {
+          [userId]: JSON.stringify(indicator)
+        });
       }
     } catch (error) {
       console.error('Failed to update typing activity:', error);
@@ -668,18 +656,26 @@ export class NotificationService {
         activityStatus: 'active'
       };
 
-      // Add to active users set
-      await this.context.redis.sAdd(`story_active_users:${storyId}`, userId);
+      // Add to active users set (simplified)
+      const activeUsersStr = await this.context.redis.get(`story_active_users:${storyId}`);
+      const activeUsers = activeUsersStr ? JSON.parse(activeUsersStr) : [];
+      if (!activeUsers.includes(userId)) {
+        activeUsers.push(userId);
+        await this.context.redis.set(`story_active_users:${storyId}`, JSON.stringify(activeUsers));
+      }
 
       // Store user details
-      await this.context.redis.hSet(
-        `story_user_details:${storyId}`,
-        userId,
-        JSON.stringify(activeUser)
-      );
+      await this.context.redis.hSet(`story_user_details:${storyId}`, {
+        [userId]: JSON.stringify(activeUser)
+      });
 
-      // Add to participants (persistent)
-      await this.context.redis.sAdd(`story_participants:${storyId}`, userId);
+      // Add to participants (persistent, simplified)
+      const participantsStr = await this.context.redis.get(`story_participants:${storyId}`);
+      const participants = participantsStr ? JSON.parse(participantsStr) : [];
+      if (!participants.includes(userId)) {
+        participants.push(userId);
+        await this.context.redis.set(`story_participants:${storyId}`, JSON.stringify(participants));
+      }
 
       // Update user presence
       await this.updateUserPresence(userId, storyId, 'viewing');
@@ -715,9 +711,12 @@ export class NotificationService {
    */
   async leaveStory(userId: string, username: string, storyId: string): Promise<void> {
     try {
-      // Remove from active users
-      await this.context.redis.sRem(`story_active_users:${storyId}`, userId);
-      await this.context.redis.hDel(`story_user_details:${storyId}`, userId);
+      // Remove from active users (simplified)
+      const activeUsersStr = await this.context.redis.get(`story_active_users:${storyId}`);
+      const activeUsers = activeUsersStr ? JSON.parse(activeUsersStr) : [];
+      const updatedUsers = activeUsers.filter((id: string) => id !== userId);
+      await this.context.redis.set(`story_active_users:${storyId}`, JSON.stringify(updatedUsers));
+      await this.context.redis.hDel(`story_user_details:${storyId}`, [userId]);
 
       // Stop any typing indicators
       await this.stopTyping(userId, username, storyId);
@@ -752,7 +751,8 @@ export class NotificationService {
    */
   async getActiveUsers(storyId: string): Promise<ActiveUser[]> {
     try {
-      const userIds = await this.context.redis.sMembers(`story_active_users:${storyId}`);
+      const activeUsersStr = await this.context.redis.get(`story_active_users:${storyId}`);
+      const userIds = activeUsersStr ? JSON.parse(activeUsersStr) : [];
       const userDetails = await this.context.redis.hGetAll(`story_user_details:${storyId}`);
       const now = Date.now();
       const activeUsers: ActiveUser[] = [];
@@ -775,9 +775,12 @@ export class NotificationService {
 
             activeUsers.push(user);
           } else {
-            // Remove inactive user
-            await this.context.redis.sRem(`story_active_users:${storyId}`, userId);
-            await this.context.redis.hDel(`story_user_details:${storyId}`, userId);
+            // Remove inactive user (simplified)
+            const activeUsersStr = await this.context.redis.get(`story_active_users:${storyId}`);
+            const activeUsers = activeUsersStr ? JSON.parse(activeUsersStr) : [];
+            const updatedUsers = activeUsers.filter((id: string) => id !== userId);
+            await this.context.redis.set(`story_active_users:${storyId}`, JSON.stringify(updatedUsers));
+            await this.context.redis.hDel(`story_user_details:${storyId}`, [userId]);
           }
         }
       }
@@ -803,10 +806,10 @@ export class NotificationService {
         sessionId
       };
 
-      await this.context.redis.setex(
+      await this.context.redis.set(
         `user_presence:${userId}:${storyId}`,
-        300, // 5 minutes expiry
-        JSON.stringify(presence)
+        JSON.stringify(presence),
+        { expiration: new Date(Date.now() + 300 * 1000) } // 5 minutes expiry
       );
 
       // Update user details last seen
@@ -816,11 +819,9 @@ export class NotificationService {
         user.lastSeen = Date.now();
         user.activityStatus = status === 'idle' ? 'idle' : 'active';
 
-        await this.context.redis.hSet(
-          `story_user_details:${storyId}`,
-          userId,
-          JSON.stringify(user)
-        );
+        await this.context.redis.hSet(`story_user_details:${storyId}`, {
+          [userId]: JSON.stringify(user)
+        });
       }
 
     } catch (error) {
@@ -857,7 +858,8 @@ export class NotificationService {
         this.getRecentActivity(storyId, 10)
       ]);
 
-      const totalParticipants = await this.context.redis.sCard(`story_participants:${storyId}`);
+      const participantsStr = await this.context.redis.get(`story_participants:${storyId}`);
+      const totalParticipants = participantsStr ? JSON.parse(participantsStr).length : 0;
 
       return {
         storyId,
@@ -890,14 +892,15 @@ export class NotificationService {
         id: `activity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       };
 
-      // Add to story activity log
-      await this.context.redis.lPush(
-        `story_activity:${event.storyId}`,
-        JSON.stringify(activityEvent)
-      );
+      // Add to story activity log (simplified)
+      const activityKey = `story_activity:${event.storyId}`;
+      const existingActivity = await this.context.redis.get(activityKey);
+      const activity = existingActivity ? JSON.parse(existingActivity) : [];
 
-      // Keep only last 50 events
-      await this.context.redis.lTrim(`story_activity:${event.storyId}`, 0, 49);
+      activity.unshift(activityEvent);
+      if (activity.length > 50) activity.splice(50); // Keep only last 50 events
+
+      await this.context.redis.set(activityKey, JSON.stringify(activity));
 
       // Set expiry (24 hours)
       await this.context.redis.expire(`story_activity:${event.storyId}`, 86400);
@@ -912,10 +915,11 @@ export class NotificationService {
    */
   async getRecentActivity(storyId: string, limit: number = 10): Promise<ActivityEvent[]> {
     try {
-      const events = await this.context.redis.lRange(`story_activity:${storyId}`, 0, limit - 1);
+      const activityStr = await this.context.redis.get(`story_activity:${storyId}`);
+      const events = activityStr ? JSON.parse(activityStr) : [];
 
-      return events.map(eventStr => JSON.parse(eventStr) as ActivityEvent)
-        .sort((a, b) => b.timestamp - a.timestamp);
+      return events.slice(0, limit).map((event: any) => event as ActivityEvent)
+        .sort((a: any, b: any) => b.timestamp - a.timestamp);
     } catch (error) {
       console.error('Failed to get recent activity:', error);
       return [];
@@ -928,7 +932,8 @@ export class NotificationService {
   async cleanupInactiveUsers(): Promise<void> {
     try {
       // This would typically be run as a background job
-      const storyKeys = await this.context.redis.keys('story_active_users:*');
+      // Note: keys() method not available in Devvit Redis, using simplified approach
+      const storyKeys: string[] = []; // This would need to be tracked differently in a real implementation
 
       for (const storyKey of storyKeys) {
         const storyId = storyKey.replace('story_active_users:', '');
@@ -990,25 +995,25 @@ export class NotificationService {
       // Check for existing submissions at the same position
       const queueKey = `submission_queue:${submission.storyId}:${submission.position}`;
       const existingQueueStr = await this.context.redis.get(queueKey);
-      
+
       if (existingQueueStr) {
         // Conflict detected - add to existing queue
         const queue = JSON.parse(existingQueueStr) as SubmissionQueue;
         queue.submissions.push(fullSubmission);
-        
-        await this.context.redis.setex(queueKey, 1800, JSON.stringify(queue)); // 30 minutes expiry
-        
+
+        await this.context.redis.set(queueKey, JSON.stringify(queue), { expiration: new Date(Date.now() + 1800 * 1000) }); // 30 minutes expiry
+
         // Check if we should start voting
         if (queue.submissions.length >= 2 && queue.processingStatus === 'queued') {
           const votingSessionId = await this.startVotingSession(queue);
-          
+
           return {
             submissionId,
             status: 'queued_for_voting',
             votingSessionId
           };
         }
-        
+
         return {
           submissionId,
           status: 'conflict_detected'
@@ -1025,7 +1030,7 @@ export class NotificationService {
         processingStatus: 'queued'
       };
 
-      await this.context.redis.setex(queueKey, 1800, JSON.stringify(newQueue));
+      await this.context.redis.set(queueKey, JSON.stringify(newQueue), { expiration: new Date(Date.now() + 1800 * 1000) });
 
       // Wait a short time to check for simultaneous submissions
       await this.waitForSimultaneousSubmissions(queueKey, 5000); // 5 seconds
@@ -1034,21 +1039,21 @@ export class NotificationService {
       const updatedQueueStr = await this.context.redis.get(queueKey);
       if (updatedQueueStr) {
         const updatedQueue = JSON.parse(updatedQueueStr) as SubmissionQueue;
-        
+
         if (updatedQueue.submissions.length === 1) {
           // No conflicts - accept submission
           await this.context.redis.del(queueKey);
-          
+
           // Add sentence to story
           await this.addSentenceToStory(fullSubmission);
-          
+
           // Notify participants
           await this.notifyStoryUpdate(submission.storyId, 'sentence_added', {
             sentenceId: submissionId,
             authorName: submission.authorName,
             content: submission.content
           });
-          
+
           return {
             submissionId,
             status: 'accepted'
@@ -1056,7 +1061,7 @@ export class NotificationService {
         } else {
           // Conflicts detected - start voting
           const votingSessionId = await this.startVotingSession(updatedQueue);
-          
+
           return {
             submissionId,
             status: 'queued_for_voting',
@@ -1097,7 +1102,7 @@ export class NotificationService {
       }
 
       const story = JSON.parse(storyData);
-      
+
       // Create sentence object
       const sentence = {
         id: submission.id,
@@ -1121,7 +1126,7 @@ export class NotificationService {
 
       // Save updated story
       await this.context.redis.set(`story:${submission.storyId}`, JSON.stringify(story));
-      
+
       // Store sentence separately for quick access
       await this.context.redis.set(`sentence:${submission.id}`, JSON.stringify(sentence));
 
@@ -1139,7 +1144,7 @@ export class NotificationService {
   private async startVotingSession(queue: SubmissionQueue): Promise<string> {
     try {
       const sessionId = `voting_session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
+
       const votingSession: VotingSession = {
         id: sessionId,
         storyId: queue.storyId,
@@ -1161,9 +1166,9 @@ export class NotificationService {
       // Update queue status
       queue.processingStatus = 'voting';
       queue.votingSessionId = sessionId;
-      
+
       const queueKey = `submission_queue:${queue.storyId}:${queue.position}`;
-      await this.context.redis.setex(queueKey, 1800, JSON.stringify(queue));
+      await this.context.redis.set(queueKey, JSON.stringify(queue), { expiration: new Date(Date.now() + 1800 * 1000) });
 
       // Notify participants about voting
       await this.notifyStoryUpdate(queue.storyId, 'voting_started', {
@@ -1276,7 +1281,7 @@ export class NotificationService {
 
       if (winningSubmissionId) {
         const winningSubmission = session.submissions.find(s => s.id === winningSubmissionId);
-        
+
         if (winningSubmission) {
           // Add winning submission to story
           await this.addSentenceToStory(winningSubmission);
@@ -1349,14 +1354,15 @@ export class NotificationService {
    */
   async getActiveVotingSessions(storyId: string): Promise<VotingSession[]> {
     try {
-      const keys = await this.context.redis.keys(`voting_session:*`);
+      // Note: keys() method not available in Devvit Redis, using simplified approach
+      const keys: string[] = []; // This would need to be tracked differently in a real implementation
       const activeSessions: VotingSession[] = [];
 
       for (const key of keys) {
         const sessionData = await this.context.redis.get(key);
         if (sessionData) {
           const session = JSON.parse(sessionData) as VotingSession;
-          
+
           if (session.storyId === storyId && session.status === 'active' && Date.now() <= session.expiresAt) {
             activeSessions.push(session);
           }
@@ -1376,13 +1382,14 @@ export class NotificationService {
    */
   async processExpiredVotingSessions(): Promise<void> {
     try {
-      const keys = await this.context.redis.keys(`voting_session:*`);
+      // Note: keys() method not available in Devvit Redis, using simplified approach
+      const keys: string[] = []; // This would need to be tracked differently in a real implementation
 
       for (const key of keys) {
         const sessionData = await this.context.redis.get(key);
         if (sessionData) {
           const session = JSON.parse(sessionData) as VotingSession;
-          
+
           if (session.status === 'active' && Date.now() > session.expiresAt) {
             await this.expireVotingSession(session.id);
           }

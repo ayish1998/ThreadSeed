@@ -1,3 +1,4 @@
+// src/components/BranchCreationDialog.tsx
 import { Devvit, useState } from '@devvit/public-api';
 import { StoryBranch } from '../types/story.js';
 
@@ -87,20 +88,19 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
   };
 
   return (
-    <vstack 
-      gap="medium" 
-      padding="large" 
-      backgroundColor="#FFFFFF" 
+    <vstack
+      gap="medium"
+      padding="large"
+      backgroundColor="#FFFFFF"
       cornerRadius="medium"
       border="thick"
       borderColor="#E0E0E0"
     >
-      {/* Header */}
-      <hstack gap="medium" alignment="center middle">
+      <hstack gap="medium" alignment="center">
         <text size="large" weight="bold">🌿 Create New Branch</text>
         <spacer grow />
-        <button 
-          appearance="secondary" 
+        <button
+          appearance="secondary"
           size="small"
           onPress={onCancel}
           disabled={isCreating}
@@ -109,52 +109,55 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
         </button>
       </hstack>
 
-      {/* Parent branch info */}
-      {parentBranch && (
+      {parentBranch ? (
         <vstack gap="small" padding="medium" backgroundColor="#F8F9FA" cornerRadius="small">
           <text size="small" color="#7C7C83">Branching from:</text>
           <text size="medium" weight="bold">{parentBranch.name}</text>
           <text size="small" color="#7C7C83">{parentBranch.description}</text>
         </vstack>
-      )}
+      ) : null}
 
-      {/* Branch name input */}
       <vstack gap="small">
         <text size="medium" weight="bold">Branch Name</text>
-        <textInput
-          value={branchName}
-          onTextChange={setBranchName}
-          placeholder="Enter a descriptive name for this branch..."
-          disabled={isCreating}
-        />
-        <text size="xsmall" color="#7C7C83">
+        <vstack backgroundColor="#f6f8fa" padding="small" cornerRadius="small" onPress={() => {
+          if (!isCreating) {
+            // In a real implementation, this would open a text input dialog
+            setBranchName("New Branch " + Date.now());
+          }
+        }}>
+          <text size="small" color={branchName ? "#24292f" : "#656d76"}>
+            {branchName || "Enter a descriptive name for this branch..."}
+          </text>
+        </vstack>
+        <text size="small" color="#7C7C83">
           {branchName.length}/50 characters
         </text>
       </vstack>
 
-      {/* Branch description input */}
       <vstack gap="small">
         <text size="medium" weight="bold">Description</text>
-        <textInput
-          value={branchDescription}
-          onTextChange={setBranchDescription}
-          placeholder="Describe what makes this branch unique..."
-          disabled={isCreating}
-        />
-        <text size="xsmall" color="#7C7C83">
+        <vstack backgroundColor="#f6f8fa" padding="small" cornerRadius="small" onPress={() => {
+          if (!isCreating) {
+            // In a real implementation, this would open a text input dialog
+            setBranchDescription("Branch description " + Date.now());
+          }
+        }}>
+          <text size="small" color={branchDescription ? "#24292f" : "#656d76"}>
+            {branchDescription || "Describe what makes this branch unique..."}
+          </text>
+        </vstack>
+        <text size="small" color="#7C7C83">
           {branchDescription.length}/200 characters
         </text>
       </vstack>
 
-      {/* Branch type selection */}
       <vstack gap="small">
         <text size="medium" weight="bold">Branch Type</text>
-        
+
         <vstack gap="small">
-          {/* Decision branch */}
-          <hstack 
-            gap="medium" 
-            alignment="center middle" 
+          <hstack
+            gap="medium"
+            alignment="center middle"
             padding="medium"
             backgroundColor={branchType === 'decision' ? '#E3F2FD' : '#FAFAFA'}
             cornerRadius="small"
@@ -163,7 +166,7 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
             onPress={() => setBranchType('decision')}
           >
             <text size="medium">🔀</text>
-            <vstack gap="xsmall" grow>
+            <vstack gap="small" grow>
               <text size="medium" weight="bold">Decision Point</text>
               <text size="small" color="#7C7C83">
                 {getBranchTypeDescription('decision')}
@@ -174,10 +177,9 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
             )}
           </hstack>
 
-          {/* Alternative branch */}
-          <hstack 
-            gap="medium" 
-            alignment="center middle" 
+          <hstack
+            gap="medium"
+            alignment="center middle"
             padding="medium"
             backgroundColor={branchType === 'alternative' ? '#E3F2FD' : '#FAFAFA'}
             cornerRadius="small"
@@ -186,7 +188,7 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
             onPress={() => setBranchType('alternative')}
           >
             <text size="medium">🔄</text>
-            <vstack gap="xsmall" grow>
+            <vstack gap="small" grow>
               <text size="medium" weight="bold">Alternative Path</text>
               <text size="small" color="#7C7C83">
                 {getBranchTypeDescription('alternative')}
@@ -197,10 +199,9 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
             )}
           </hstack>
 
-          {/* Experimental branch */}
-          <hstack 
-            gap="medium" 
-            alignment="center middle" 
+          <hstack
+            gap="medium"
+            alignment="center middle"
             padding="medium"
             backgroundColor={branchType === 'experimental' ? '#E3F2FD' : '#FAFAFA'}
             cornerRadius="small"
@@ -209,7 +210,7 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
             onPress={() => setBranchType('experimental')}
           >
             <text size="medium">🧪</text>
-            <vstack gap="xsmall" grow>
+            <vstack gap="small" grow>
               <text size="medium" weight="bold">Experimental</text>
               <text size="small" color="#7C7C83">
                 {getBranchTypeDescription('experimental')}
@@ -223,15 +224,14 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
       </vstack>
 
       {/* Error message */}
-      {error && (
+      {error ? (
         <text size="small" color="#FF4500" weight="bold">
           ⚠️ {error}
         </text>
-      )}
+      ) : null}
 
-      {/* Action buttons */}
-      <hstack gap="medium" alignment="center middle">
-        <button 
+      <hstack gap="medium" alignment="center">
+        <button
           appearance="secondary"
           onPress={onCancel}
           disabled={isCreating}
@@ -239,7 +239,7 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
         >
           Cancel
         </button>
-        <button 
+        <button
           appearance="primary"
           onPress={handleCreate}
           disabled={isCreating || !branchName.trim() || !branchDescription.trim()}
@@ -249,16 +249,15 @@ export const BranchCreationDialog: Devvit.BlockComponent<BranchCreationDialogPro
         </button>
       </hstack>
 
-      {/* Tips */}
       <vstack gap="small" padding="medium" backgroundColor="#F0F8FF" cornerRadius="small">
         <text size="small" weight="bold" color="#0079D3">💡 Tips for creating branches:</text>
-        <text size="xsmall" color="#7C7C83">
+        <text size="small" color="#7C7C83">
           • Give your branch a clear, descriptive name
         </text>
-        <text size="xsmall" color="#7C7C83">
+        <text size="small" color="#7C7C83">
           • Explain what makes this path different or interesting
         </text>
-        <text size="xsmall" color="#7C7C83">
+        <text size="small" color="#7C7C83">
           • Choose the appropriate type to help others understand the branch's purpose
         </text>
       </vstack>

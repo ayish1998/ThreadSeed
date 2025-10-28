@@ -95,6 +95,13 @@ export interface StoryMetadata {
   theme?: string;
   tags: string[];
   isPublic: boolean;
+
+  // ✅ Journey 1 fields - Updated for new flow
+  genre?: 'fantasy' | 'scifi' | 'mystery' | 'romance' | 'horror' | 'slice_of_life' | 'other';
+  constraint?: string;
+  duration?: '3days' | '7days' | '14days' | '30days' | 'ongoing';
+  wordLimit?: '100-300' | '300-500' | '500-1000';
+  expiresAt?: number; // Timestamp when story auto-completes
 }
 
 export interface UserStoryData {

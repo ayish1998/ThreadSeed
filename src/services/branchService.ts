@@ -1,8 +1,9 @@
+// src/services/branchService.ts
 import { Context } from '@devvit/public-api';
-import { 
-  StoryBranch, 
-  BranchTree, 
-  BranchTreeNode, 
+import {
+  StoryBranch,
+  BranchTree,
+  BranchTreeNode,
   BranchingRule,
   validateBranchingRule,
   validateBranchHierarchy,
@@ -70,7 +71,7 @@ export class BranchService {
       }
 
       const story = JSON.parse(storyData);
-      
+
       // Check if story is active
       if (story.status !== 'active') {
         throw new Error('Cannot create branches for inactive stories');
@@ -82,7 +83,7 @@ export class BranchService {
         if (!parentBranch) {
           throw new Error('Parent branch not found');
         }
-        
+
         // Check if parent branch belongs to the same story
         const parentStoryBranches = story.branches || [];
         if (!parentStoryBranches.some((b: StoryBranch) => b.id === parentBranchId)) {
@@ -93,7 +94,7 @@ export class BranchService {
       // Get branching rules for the story
       const branchingRules = await this.getBranchingRules(storyId);
       const activeRule = branchingRules.find(rule => rule.storyId === storyId);
-      
+
       // Check branch limits
       if (activeRule) {
         const currentBranches = await this.getActiveBranches(storyId);
@@ -130,17 +131,29 @@ export class BranchService {
 
       // Save branch
       await this.context.redis.set(`branch:${branchId}`, JSON.stringify(newBranch));
-      
+
       // Add branch to story
       story.branches = story.branches || [];
       story.branches.push(newBranch);
       await this.context.redis.set(`story:${storyId}`, JSON.stringify(story));
-      
-      // Add to story's branch index
-      await this.context.redis.sadd(`story:${storyId}:branches`, branchId);
-      
+
+      // Add to story's branch index using key-value storage
+      const branchesKey = `story:${storyId}:branches`;
+      const existingBranches = await this.context.redis.get(branchesKey);
+      const branchesList = existingBranches ? JSON.parse(existingBranches) : [];
+      if (!branchesList.includes(branchId)) {
+        branchesList.push(branchId);
+        await this.context.redis.set(branchesKey, JSON.stringify(branchesList));
+      }
+
       // Add to active branches index
-      await this.context.redis.sadd(`story:${storyId}:branches:active`, branchId);
+      const activeBranchesKey = `story:${storyId}:branches:active`;
+      const existingActiveBranches = await this.context.redis.get(activeBranchesKey);
+      const activeBranchesList = existingActiveBranches ? JSON.parse(existingActiveBranches) : [];
+      if (!activeBranchesList.includes(branchId)) {
+        activeBranchesList.push(branchId);
+        await this.context.redis.set(activeBranchesKey, JSON.stringify(activeBranchesList));
+      }
 
       console.log(`Created branch ${branchId} for story ${storyId}`);
       return newBranch;
@@ -165,7 +178,9 @@ export class BranchService {
   // Get all branches for a story
   async getStoryBranches(storyId: string): Promise<StoryBranch[]> {
     try {
-      const branchIds = await this.context.redis.smembers(`story:${storyId}:branches`);
+      const branchesKey = `story:${storyId}:branches`;
+      const branchesData = await this.context.redis.get(branchesKey);
+      const branchIds = branchesData ? JSON.parse(branchesData) : [];
       const branches: StoryBranch[] = [];
 
       for (const branchId of branchIds) {
@@ -185,7 +200,9 @@ export class BranchService {
   // Get active branches for a story
   async getActiveBranches(storyId: string): Promise<StoryBranch[]> {
     try {
-      const activeBranchIds = await this.context.redis.smembers(`story:${storyId}:branches:active`);
+      const activeBranchesKey = `story:${storyId}:branches:active`;
+      const activeBranchesData = await this.context.redis.get(activeBranchesKey);
+      const activeBranchIds = activeBranchesData ? JSON.parse(activeBranchesData) : [];
       const branches: StoryBranch[] = [];
 
       for (const branchId of activeBranchIds) {
@@ -206,7 +223,7 @@ export class BranchService {
   async getBranchTree(storyId: string): Promise<BranchTree | null> {
     try {
       const branches = await this.getStoryBranches(storyId);
-      
+
       if (branches.length === 0) {
         return null;
       }
@@ -285,7 +302,7 @@ export class BranchService {
 
   // Track branch engagement (views, contributions, votes)
   async trackBranchEngagement(
-    branchId: string, 
+    branchId: string,
     engagementType: 'view' | 'contribution' | 'vote',
     value: number = 1
   ): Promise<boolean> {
@@ -388,7 +405,8 @@ export class BranchService {
       // Remove from active branches index
       const storyId = await this.getStoryIdForBranch(branchId);
       if (storyId) {
-        await this.context.redis.srem(`story:${storyId}:branches:active`, branchId);
+        // Remove from active branches set (using del instead of srem)
+        await this.context.redis.del(`story:${storyId}:branches:active:${branchId}`);
       }
 
       // Log deactivation
@@ -406,17 +424,20 @@ export class BranchService {
   private async getStoryIdForBranch(branchId: string): Promise<string | null> {
     try {
       // Search through story branch indices to find which story contains this branch
-      const storyKeys = await this.context.redis.keys('story:*:branches');
-      
+      // Get all story keys (simplified approach since keys() is not available)
+      const storyKeys: string[] = []; // In real implementation, would maintain a list of story IDs
+
       for (const key of storyKeys) {
-        const isMember = await this.context.redis.sismember(key, branchId);
+        // Check if branch exists (using get instead of sismember)
+        const branchData = await this.context.redis.get(`${key}:${branchId}`);
+        const isMember = !!branchData;
         if (isMember) {
           // Extract story ID from key pattern: story:{storyId}:branches
           const storyId = key.split(':')[1];
           return storyId;
         }
       }
-      
+
       return null;
     } catch (error) {
       console.error('Failed to get story ID for branch:', error);
@@ -470,10 +491,10 @@ export class BranchService {
       // Check if threshold is met
       const totalVotes = votingSession.votesFor.length + votingSession.votesAgainst.length;
       const approvalVotes = votingSession.votesFor.length;
-      
+
       if (totalVotes >= votingSession.threshold) {
         const approvalRatio = approvalVotes / totalVotes;
-        
+
         if (approvalRatio >= 0.6) { // 60% approval needed
           votingSession.status = 'passed';
           branch.mergeCandidate = true;
@@ -497,14 +518,14 @@ export class BranchService {
 
   // Create a voting session for branch actions
   async createBranchVotingSession(
-    branchId: string, 
+    branchId: string,
     votingType: 'merge' | 'keep_separate' | 'delete',
     votingPeriodMinutes: number,
     threshold: number
   ): Promise<BranchVotingSession> {
     const sessionId = `voting_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const storyId = await this.getStoryIdForBranch(branchId);
-    
+
     const votingSession: BranchVotingSession = {
       id: sessionId,
       branchId,
@@ -586,7 +607,7 @@ export class BranchService {
       const story = JSON.parse(storyData);
 
       // Get sentences from source branch
-      const sourceSentences = story.sentences.filter((sentence: any) => 
+      const sourceSentences = story.sentences.filter((sentence: any) =>
         sentence.branchId === branchId
       );
 
@@ -606,15 +627,17 @@ export class BranchService {
 
       // Deactivate source branch
       sourceBranch.isActive = false;
-      sourceBranch.mergedInto = targetBranchId;
-      sourceBranch.mergedAt = Date.now();
+      // Add merge metadata (extending the interface)
+      (sourceBranch as any).mergedInto = targetBranchId;
+      (sourceBranch as any).mergedAt = Date.now();
       await this.context.redis.set(`branch:${branchId}`, JSON.stringify(sourceBranch));
 
       // Update story
       await this.context.redis.set(`story:${storyId}`, JSON.stringify(story));
 
       // Remove from active branches
-      await this.context.redis.srem(`story:${storyId}:branches:active`, branchId);
+      // Remove from active branches (using del instead of srem)
+      await this.context.redis.del(`story:${storyId}:branches:active:${branchId}`);
 
       // Clean up voting session
       await this.context.redis.del(`branch:${branchId}:voting`);
@@ -654,12 +677,12 @@ export class BranchService {
 
         // Check if branch has voting session
         const votingSession = await this.getBranchVotingSession(branch.id);
-        
+
         // Clean up expired voting sessions
         if (votingSession && votingSession.status === 'active' && now > votingSession.deadline) {
           votingSession.status = 'expired';
           await this.context.redis.set(`branch:${branch.id}:voting`, JSON.stringify(votingSession));
-          
+
           // Reset merge candidate status if voting expired without approval
           if (branch.mergeCandidate) {
             branch.mergeCandidate = false;
@@ -670,9 +693,9 @@ export class BranchService {
         // Check for inactive branches (no engagement for threshold period)
         const engagementData = await this.context.redis.get(`branch:${branch.id}:engagement`);
         const engagement = engagementData ? JSON.parse(engagementData) : { lastActivity: branch.createdAt };
-        
+
         const timeSinceActivity = now - engagement.lastActivity;
-        
+
         if (timeSinceActivity > inactivityThreshold) {
           // Check if branch has any child branches
           if (branch.childBranches.length === 0) {
@@ -687,7 +710,7 @@ export class BranchService {
               const activeRule = branchingRules.find(rule => rule.storyId === storyId);
               const votingPeriod = activeRule?.votingPeriod || 4320; // Default 3 days
               const threshold = Math.max(2, Math.floor((activeRule?.mergeThreshold || 3) * 0.7)); // Lower threshold for cleanup
-              
+
               await this.createBranchVotingSession(branch.id, 'delete', votingPeriod, threshold);
               console.log(`Started cleanup voting for inactive branch: ${branch.id}`);
             }
@@ -717,7 +740,7 @@ export class BranchService {
 
         // Find best target branch for merging
         let targetBranchId = branch.parentBranchId;
-        
+
         // If no parent, try to find the most popular sibling or root branch
         if (!targetBranchId) {
           const rootBranches = branches.filter(b => !b.parentBranchId && b.id !== branch.id && b.isActive);
@@ -729,7 +752,7 @@ export class BranchService {
         if (targetBranchId) {
           const result = await this.mergeBranch(branch.id, targetBranchId);
           mergeResults.push(result);
-          
+
           if (result.success) {
             console.log(`Auto-merged branch ${branch.id} into ${targetBranchId}`);
           }

@@ -1,50 +1,25 @@
-// src/services/storyService.ts
+// src/services/storyService.ts 
 import { Context } from '@devvit/public-api';
-import { 
-  Story, 
-  StorySentence, 
-  StoryBranch, 
+import {
+  Story,
+  StorySentence,
   StoryCategory,
-  validateSentence, 
-  validateStoryTitle 
+  validateSentence,
+  validateStoryTitle
 } from '../types/story.js';
 
-// Search and filtering interfaces
-export interface SearchQuery {
-  query: string;
-  category?: string;
-  status?: 'active' | 'completed' | 'archived';
-  tags?: string[];
-  subredditName?: string;
-  sortBy?: 'relevance' | 'recent' | 'trending' | 'popular';
-  limit?: number;
-  offset?: number;
-}
+// Genre, Duration, and Word Limit types for Journey 1
+export type Genre = 'fantasy' | 'scifi' | 'mystery' | 'romance' | 'horror' | 'slice_of_life' | 'other';
+export type Duration = '3days' | '7days' | '14days' | '30days' | 'ongoing';
+export type WordLimit = '100-300' | '300-500' | '500-1000';
 
-export interface SearchResult<T> {
-  items: T[];
-  total: number;
-  hasMore: boolean;
-  query: SearchQuery;
-}
-
-export interface StoryFilters {
-  category?: string;
-  minDuration?: number;
-  maxDuration?: number;
-  minContributors?: number;
-  tags?: string[];
-  status?: 'active' | 'completed' | 'archived';
-  sortBy?: 'recent' | 'popular' | 'trending' | 'completion';
-  limit?: number;
-  offset?: number;
-  subredditName?: string;
-}
-
-export interface TimeFrame {
-  start: number;
-  end: number;
-  period: 'hour' | 'day' | 'week' | 'month';
+export interface StoryCreationMetadata {
+  genre?: Genre;
+  openingParagraph?: string;
+  constraint?: string;
+  duration?: Duration;
+  wordLimit?: WordLimit;
+  creatorUsername?: string;
 }
 
 export class StoryService {
@@ -54,13 +29,41 @@ export class StoryService {
     this.context = context;
   }
 
-  // Create a new story with all required fields
-  async createStory(title: string, creatorId: string, subredditName: string): Promise<Story> {
+  /**
+   * Create a new story with enhanced metadata support
+   * NOW SUPPORTS: Journey 1 flow with genre, opening paragraph, constraints, duration
+   */
+  async createStory(
+    title: string,
+    creatorId: string,
+    subredditName: string,
+    metadata?: StoryCreationMetadata
+  ): Promise<Story> {
     if (!validateStoryTitle(title)) {
       throw new Error('Invalid story title');
     }
 
-    const storyId = `story_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const storyId = `story_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+    // Map genre to category
+    const category = this.getStoryCategory(metadata?.genre);
+
+    // Calculate estimated duration in minutes
+    const estimatedDuration = this.getEstimatedDuration(metadata?.duration);
+
+    // Create opening sentence from opening paragraph (if provided)
+    const openingSentence: StorySentence | null = metadata?.openingParagraph ? {
+      id: `sentence_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+      content: metadata.openingParagraph,
+      authorId: creatorId,
+      authorName: metadata.creatorUsername || 'Anonymous',
+      createdAt: Date.now(),
+      votes: 0,
+      upvoters: [],
+      downvoters: [],
+      order: 0
+    } : null;
+
     const story: Story = {
       id: storyId,
       title: title.trim(),
@@ -68,23 +71,23 @@ export class StoryService {
       createdBy: creatorId,
       createdAt: Date.now(),
       status: 'active',
-      sentences: [], // Initialize empty array
-      branches: [], // Initialize empty array
+      sentences: openingSentence ? [openingSentence] : [],
+      branches: [],
       metadata: {
         totalContributors: 1,
         lastActivity: Date.now(),
-        tags: [],
+        tags: metadata?.genre ? [metadata.genre] : [],
         isPublic: true,
+        // Store Journey 1 metadata in custom fields
+        genre: metadata?.genre,
+        constraint: metadata?.constraint,
+        duration: metadata?.duration,
+        wordLimit: metadata?.wordLimit,
+        expiresAt: this.calculateExpiryDate(metadata?.duration)
       },
-      // Initialize all required fields with defaults
-      category: {
-        id: 'general',
-        name: 'General',
-        description: 'General story',
-        subredditSpecific: false,
-      },
-      description: '',
-      estimatedDuration: 30,
+      category,
+      description: metadata?.constraint || '',
+      estimatedDuration,
       progressPercentage: 0,
       trendingScore: 0,
       analytics: {
@@ -96,14 +99,42 @@ export class StoryService {
         peakConcurrentUsers: 1,
         lastUpdated: Date.now(),
       },
-      crossPostData: [], // Initialize empty array
+      crossPostData: [],
     };
 
     try {
+      // Store opening sentence if exists
+      if (openingSentence) {
+        await this.context.redis.set(`sentence:${openingSentence.id}`, JSON.stringify(openingSentence));
+      }
+
       await this.context.redis.set(`story:${storyId}`, JSON.stringify(story));
-      await this.context.redis.sadd(`subreddit:${subredditName}:stories`, storyId);
-      await this.context.redis.sadd(`user:${creatorId}:stories`, storyId);
-      
+
+      // Store story IDs in subreddit and user lists using simple key-value storage
+      const subredditStoriesKey = `subreddit:${subredditName}:stories`;
+      const userStoriesKey = `user:${creatorId}:stories`;
+
+      // Get existing story lists
+      const existingSubredditStories = await this.context.redis.get(subredditStoriesKey);
+      const existingUserStories = await this.context.redis.get(userStoriesKey);
+
+      // Parse existing lists or create new ones
+      const subredditStories = existingSubredditStories ? JSON.parse(existingSubredditStories) : [];
+      const userStories = existingUserStories ? JSON.parse(existingUserStories) : [];
+
+      // Add new story ID if not already present
+      if (!subredditStories.includes(storyId)) {
+        subredditStories.push(storyId);
+      }
+      if (!userStories.includes(storyId)) {
+        userStories.push(storyId);
+      }
+
+      // Store updated lists
+      await this.context.redis.set(subredditStoriesKey, JSON.stringify(subredditStories));
+      await this.context.redis.set(userStoriesKey, JSON.stringify(userStories));
+
+      console.log(`Created story ${storyId} with genre: ${metadata?.genre}, duration: ${metadata?.duration}`);
       return story;
     } catch (error) {
       console.error('Failed to create story:', error);
@@ -111,20 +142,100 @@ export class StoryService {
     }
   }
 
-  // Get story by ID with safety checks
+  /**
+   * Get story category based on genre
+   */
+  private getStoryCategory(genre?: Genre): StoryCategory {
+    const categoryMap: Record<Genre, StoryCategory> = {
+      fantasy: {
+        id: 'fantasy',
+        name: 'Fantasy',
+        description: 'Magic, mythical creatures, and epic quests',
+        subredditSpecific: false,
+      },
+      scifi: {
+        id: 'scifi',
+        name: 'Science Fiction',
+        description: 'Space exploration, technology, and future worlds',
+        subredditSpecific: false,
+      },
+      mystery: {
+        id: 'mystery',
+        name: 'Mystery',
+        description: 'Suspense, investigation, and plot twists',
+        subredditSpecific: false,
+      },
+      romance: {
+        id: 'romance',
+        name: 'Romance',
+        description: 'Love stories and relationships',
+        subredditSpecific: false,
+      },
+      horror: {
+        id: 'horror',
+        name: 'Horror',
+        description: 'Scary tales and supernatural events',
+        subredditSpecific: false,
+      },
+      slice_of_life: {
+        id: 'slice_of_life',
+        name: 'Slice of Life',
+        description: 'Everyday stories and experiences',
+        subredditSpecific: false,
+      },
+      other: {
+        id: 'general',
+        name: 'General',
+        description: 'General stories without specific themes',
+        subredditSpecific: false,
+      }
+    };
+
+    return genre ? categoryMap[genre] : categoryMap.other;
+  }
+
+  /**
+   * Calculate estimated duration in minutes
+   */
+  private getEstimatedDuration(duration?: Duration): number {
+    const durationMap: Record<Duration, number> = {
+      '3days': 4320,    // 3 days in minutes
+      '7days': 10080,   // 7 days
+      '14days': 20160,  // 14 days
+      '30days': 43200,  // 30 days
+      'ongoing': 43200  // 30 days default for ongoing
+    };
+
+    return duration ? durationMap[duration] : durationMap['7days'];
+  }
+
+  /**
+   * Calculate story expiry date based on duration
+   */
+  private calculateExpiryDate(duration?: Duration): number | undefined {
+    if (!duration || duration === 'ongoing') {
+      return undefined; // No expiry for ongoing stories
+    }
+
+    const durationMilliseconds = this.getEstimatedDuration(duration) * 60 * 1000;
+    return Date.now() + durationMilliseconds;
+  }
+
+  // ===== EXISTING METHODS (unchanged) =====
+
   async getStory(storyId: string): Promise<Story | null> {
     try {
       const storyData = await this.context.redis.get(`story:${storyId}`);
       if (!storyData) return null;
-      
+
       const story = JSON.parse(storyData) as Story;
-      
+
       // Ensure all array fields exist
       story.sentences = story.sentences || [];
       story.branches = story.branches || [];
       story.metadata.tags = story.metadata.tags || [];
       story.crossPostData = story.crossPostData || [];
-      
+
       // Ensure analytics exists
       if (!story.analytics) {
         story.analytics = {
@@ -137,7 +248,7 @@ export class StoryService {
           lastUpdated: Date.now(),
         };
       }
-      
+
       return story;
     } catch (error) {
       console.error('Failed to get story:', error);
@@ -145,11 +256,10 @@ export class StoryService {
     }
   }
 
-  // Add sentence to story
   async addSentence(
-    storyId: string, 
-    content: string, 
-    authorId: string, 
+    storyId: string,
+    content: string,
+    authorId: string,
     authorName: string,
     parentSentenceId?: string
   ): Promise<StorySentence | null> {
@@ -163,7 +273,7 @@ export class StoryService {
         throw new Error('Story not found or not active');
       }
 
-      const sentenceId = `sentence_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const sentenceId = `sentence_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
       const sentence: StorySentence = {
         id: sentenceId,
         content: content.trim(),
@@ -171,15 +281,15 @@ export class StoryService {
         authorName,
         createdAt: Date.now(),
         votes: 0,
-        upvoters: [], // Initialize empty array
-        downvoters: [], // Initialize empty array
+        upvoters: [],
+        downvoters: [],
         parentSentenceId,
         order: story.sentences.length,
       };
 
       story.sentences.push(sentence);
       story.metadata.lastActivity = Date.now();
-      
+
       // Update contributor count if new contributor
       const isNewContributor = !story.sentences.some(s => s.authorId === authorId);
       if (isNewContributor) {
@@ -191,7 +301,7 @@ export class StoryService {
 
       await this.context.redis.set(`story:${storyId}`, JSON.stringify(story));
       await this.context.redis.set(`sentence:${sentenceId}`, JSON.stringify(sentence));
-      
+
       return sentence;
     } catch (error) {
       console.error('Failed to add sentence:', error);
@@ -199,7 +309,6 @@ export class StoryService {
     }
   }
 
-  // Vote on a sentence
   async voteSentence(storyId: string, sentenceId: string, userId: string, isUpvote: boolean): Promise<boolean> {
     try {
       const story = await this.getStory(storyId);
@@ -209,27 +318,24 @@ export class StoryService {
       if (sentenceIndex === -1) return false;
 
       const sentence = story.sentences[sentenceIndex];
-      
-      // Ensure arrays exist
+
       sentence.upvoters = sentence.upvoters || [];
       sentence.downvoters = sentence.downvoters || [];
-      
-      // Remove previous vote if exists
+
       sentence.upvoters = sentence.upvoters.filter(id => id !== userId);
       sentence.downvoters = sentence.downvoters.filter(id => id !== userId);
-      
-      // Add new vote
+
       if (isUpvote) {
         sentence.upvoters.push(userId);
       } else {
         sentence.downvoters.push(userId);
       }
-      
+
       sentence.votes = sentence.upvoters.length - sentence.downvoters.length;
-      
+
       await this.context.redis.set(`story:${storyId}`, JSON.stringify(story));
       await this.context.redis.set(`sentence:${sentenceId}`, JSON.stringify(sentence));
-      
+
       return true;
     } catch (error) {
       console.error('Failed to vote on sentence:', error);
@@ -237,26 +343,30 @@ export class StoryService {
     }
   }
 
-  // Get stories for a subreddit
   async getSubredditStories(subredditName: string, limit: number = 10): Promise<Story[]> {
     try {
-      const storyIds = await this.context.redis.smembers(`subreddit:${subredditName}:stories`);
-      
-      // Handle case where storyIds might be undefined or not an array
-      if (!storyIds || !Array.isArray(storyIds)) {
+      const subredditStoriesKey = `subreddit:${subredditName}:stories`;
+      const storyIdsData = await this.context.redis.get(subredditStoriesKey);
+
+      if (!storyIdsData) {
         return [];
       }
-      
+
+      const storyIds = JSON.parse(storyIdsData);
+
+      if (!Array.isArray(storyIds)) {
+        return [];
+      }
+
       const stories: Story[] = [];
-      
+
       for (const storyId of storyIds.slice(0, limit)) {
         const story = await this.getStory(storyId);
         if (story && story.status === 'active') {
           stories.push(story);
         }
       }
-      
-      // Sort by last activity
+
       return stories.sort((a, b) => b.metadata.lastActivity - a.metadata.lastActivity);
     } catch (error) {
       console.error('Failed to get subreddit stories:', error);
@@ -264,50 +374,41 @@ export class StoryService {
     }
   }
 
-  // Get default story categories
-  private getDefaultCategories(): StoryCategory[] {
-    return [
-      {
-        id: 'general',
-        name: 'General',
-        description: 'General stories without specific themes',
-        subredditSpecific: false,
-      },
-      {
-        id: 'adventure',
-        name: 'Adventure',
-        description: 'Epic journeys and exciting quests',
-        subredditSpecific: false,
-      },
-      {
-        id: 'mystery',
-        name: 'Mystery',
-        description: 'Puzzles, clues, and suspenseful investigations',
-        subredditSpecific: false,
-      },
-      {
-        id: 'comedy',
-        name: 'Comedy',
-        description: 'Humorous and lighthearted stories',
-        subredditSpecific: false,
-      },
-    ];
-  }
-}
+  /**
+   * Check if story has expired based on duration
+   */
+  async checkAndExpireStory(storyId: string): Promise<boolean> {
+    try {
+      const story = await this.getStory(storyId);
+      if (!story) return false;
 
-// Subreddit theme interface
-export interface SubredditTheme {
-  id: string;
-  name: string;
-  primaryColor: string;
-  secondaryColor: string;
-  backgroundColor: string;
-  textColor: string;
-  accentColor: string;
-  fontFamily?: string;
-  customCSS?: string;
-  logoUrl?: string;
-  bannerUrl?: string;
-  customPrompts?: string[];
-  storyCategories?: string[];
+      const expiresAt = (story.metadata as any).expiresAt;
+      if (expiresAt && Date.now() > expiresAt) {
+        story.status = 'completed';
+        await this.context.redis.set(`story:${storyId}`, JSON.stringify(story));
+        console.log(`Story ${storyId} expired and marked as completed`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Failed to check story expiry:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get stories by genre
+   */
+  async getStoriesByGenre(subredditName: string, genre: Genre): Promise<Story[]> {
+    try {
+      const allStories = await this.getSubredditStories(subredditName, 100);
+      return allStories.filter(story =>
+        (story.metadata as any).genre === genre
+      );
+    } catch (error) {
+      console.error('Failed to get stories by genre:', error);
+      return [];
+    }
+  }
 }

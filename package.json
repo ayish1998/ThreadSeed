@@ -1,7 +1,7 @@
 {
-  "name": "storyweave",
+  "name": "threadsmith",
   "version": "1.0.0",
-  "description": "Collaborative storytelling game for Reddit communities",
+  "description": "ThreadSmith - Simplified collaborative storytelling for Reddit communities",
   "main": "src/main.tsx",
   "scripts": {
     "build": "devvit build",
@@ -14,6 +14,8 @@
     "@devvit/kit": "^1.1.4",
     "@devvit/protos": "^0.12.1",
     "@devvit/public-api": "^0.12.1",
+    "@types/react": "^19.2.2",
+    "devvit": "^0.12.1",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   },

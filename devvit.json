@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "threadseed",
+  "name": "threadsmith",
   "blocks": {
     "entry": "src/main.tsx"
   },
@@ -12,6 +12,6 @@
     }
   },
   "dev": {
-    "subreddit": "threadseed_dev"
+    "subreddit": "threadsmith_dev"
   }
 }

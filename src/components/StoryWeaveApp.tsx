@@ -3,6 +3,8 @@ import { Context, Devvit, useState, useAsync } from '@devvit/public-api';
 import { StoryList } from './StoryList.js';
 import { StoryBuilder } from './StoryBuilder.js';
 import { SplashScreen } from './SplashScreen.js';
+import { VotingInterface } from './VotingInterface.js';
+import { CommunityDashboard } from './CommunityDashboard.js';
 
 interface StoryWeaveAppProps {
   context: Context;
@@ -10,29 +12,31 @@ interface StoryWeaveAppProps {
 
 export const StoryWeaveApp: Devvit.BlockComponent<StoryWeaveAppProps> = ({ context }) => {
   console.log('[StoryWeaveApp] Component rendering');
-  
-  const [currentView, setCurrentView] = useState<'splash' | 'list' | 'builder'>('splash');
+
+  const [currentView, setCurrentView] = useState<'splash' | 'list' | 'builder' | 'voting' | 'dashboard'>('splash');
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null);
 
   // Load user data and permissions
-  const { data: userData, loading: userLoading } = useAsync(async () => {
+  const { data: userDataString, loading: userLoading } = useAsync(async () => {
     console.log('[StoryWeaveApp] Loading user data...');
     try {
       const user = await context.reddit.getCurrentUser();
       const subreddit = await context.reddit.getCurrentSubreddit();
-      
-      console.log(`[StoryWeaveApp] User loaded: ${user.username}, Subreddit: ${subreddit.name}`);
-      
-      return {
+
+      console.log(`[StoryWeaveApp] User loaded: ${user?.username}, Subreddit: ${subreddit.name}`);
+
+      return JSON.stringify({
         user,
         subreddit,
         canPost: true,
-      };
+      });
     } catch (error) {
       console.error('[StoryWeaveApp] Failed to load user data:', error);
       return null;
     }
   });
+
+  const userData = userDataString ? JSON.parse(userDataString) : null;
 
   const handleStartStory = () => {
     console.log('[StoryWeaveApp] Starting story - navigating to list');
@@ -48,6 +52,27 @@ export const StoryWeaveApp: Devvit.BlockComponent<StoryWeaveAppProps> = ({ conte
   const handleBackToList = () => {
     console.log('[StoryWeaveApp] Navigating back to list');
     setSelectedStoryId(null);
+    setCurrentView('list');
+  };
+
+  const handleShowVoting = (storyId: string) => {
+    console.log(`[StoryWeaveApp] Showing voting for story: ${storyId}`);
+    setSelectedStoryId(storyId);
+    setCurrentView('voting');
+  };
+
+  const handleShowDashboard = () => {
+    console.log('[StoryWeaveApp] Showing community dashboard');
+    setCurrentView('dashboard');
+  };
+
+  const handleBackFromVoting = () => {
+    console.log('[StoryWeaveApp] Navigating back from voting');
+    setCurrentView('builder');
+  };
+
+  const handleBackFromDashboard = () => {
+    console.log('[StoryWeaveApp] Navigating back from dashboard');
     setCurrentView('list');
   };
 
@@ -74,21 +99,22 @@ export const StoryWeaveApp: Devvit.BlockComponent<StoryWeaveAppProps> = ({ conte
 
   // Main view routing
   console.log(`[StoryWeaveApp] Current view: ${currentView}`);
-  
+
   if (currentView === 'splash') {
     return <SplashScreen onStart={handleStartStory} />;
   }
-  
+
   if (currentView === 'list') {
     return (
-      <StoryList 
+      <StoryList
         context={context}
         userData={userData}
         onSelectStory={handleSelectStory}
+        onShowDashboard={handleShowDashboard}
       />
     );
   }
-  
+
   if (currentView === 'builder' && selectedStoryId) {
     return (
       <StoryBuilder
@@ -96,6 +122,29 @@ export const StoryWeaveApp: Devvit.BlockComponent<StoryWeaveAppProps> = ({ conte
         userData={userData}
         storyId={selectedStoryId}
         onBack={handleBackToList}
+        onShowVoting={handleShowVoting}
+      />
+    );
+  }
+
+  if (currentView === 'voting' && selectedStoryId) {
+    return (
+      <VotingInterface
+        context={context}
+        userData={userData}
+        storyId={selectedStoryId}
+        onBack={handleBackFromVoting}
+      />
+    );
+  }
+
+  if (currentView === 'dashboard') {
+    return (
+      <CommunityDashboard
+        context={context}
+        userData={userData}
+        onSelectStory={handleSelectStory}
+        onBack={handleBackFromDashboard}
       />
     );
   }
