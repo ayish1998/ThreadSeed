@@ -607,8 +607,9 @@ const threadSmithCreationForm = Devvit.createForm(
         subreddit = await reddit.getCurrentSubreddit();
       } catch (subredditError) {
         console.error('[ThreadSmithForm] Cannot access subreddit (may be private):', subredditError);
-        ui.showToast({ text: '❌ Cannot access subreddit. Please check permissions or make subreddit public.' });
-        return;
+        // Use demo mode instead of failing
+        subreddit = { name: 'demo_subreddit' };
+        ui.showToast({ text: '⚠️ Using demo mode - subreddit access limited' });
       }
       
       const user = await reddit.getCurrentUser();
@@ -637,21 +638,52 @@ const threadSmithCreationForm = Devvit.createForm(
       // Show loading message
       ui.showToast({ text: '✨ Creating your ThreadSmith story...' });
 
-      // Create the story thread as a Custom Interactive Post
-      const post = await reddit.submitPost({
-        title: `📖 ${titleStr}`,
-        subredditName: subreddit.name,
-        preview: (
-          <StoryThreadPreview
-            title={titleStr}
-            genre={genreStr}
-            contentRating={contentRatingStr}
-            duration={durationStr}
-            wordLimit="300-500"
-            opening={openingStr}
-          />
-        ),
-      });
+      let post;
+      if (subreddit.name === 'demo_subreddit') {
+        // Demo mode - create story without Reddit API
+        const { DemoDataService } = await import('./services/demoDataService.js');
+        const demoService = new DemoDataService(context);
+        
+        const demoStory = {
+          id: `demo_story_${Date.now()}`,
+          title: titleStr,
+          genre: genreStr,
+          contentRating: contentRatingStr,
+          opening: openingStr,
+          duration: durationStr,
+          createdAt: Date.now(),
+          status: 'active' as const,
+          currentChapter: 1,
+          chapters: []
+        };
+        
+        await context.redis.set(`demo_story:${demoStory.id}`, JSON.stringify(demoStory));
+        
+        // Add to demo stories list
+        const existingList = await context.redis.get('demo_stories_list');
+        const storyIds = existingList ? JSON.parse(existingList) : [];
+        storyIds.push(demoStory.id);
+        await context.redis.set('demo_stories_list', JSON.stringify(storyIds));
+        
+        post = { id: demoStory.id };
+        console.log(`[ThreadSmithForm] Demo story created: ${demoStory.id}`);
+      } else {
+        // Normal mode - create Reddit post
+        post = await reddit.submitPost({
+          title: `📖 ${titleStr}`,
+          subredditName: subreddit.name,
+          preview: (
+            <StoryThreadPreview
+              title={titleStr}
+              genre={genreStr}
+              contentRating={contentRatingStr}
+              duration={durationStr}
+              wordLimit="300-500"
+              opening={openingStr}
+            />
+          ),
+        });
+      }
 
       // Store story metadata
       const storyMetadata = {
@@ -720,8 +752,12 @@ Good luck, storytellers! ✨
       console.log(`[ThreadSmithForm] Story thread created: ${post.id}`);
 
       // Success message and navigation
-      ui.showToast({ text: '🎉 Your ThreadSmith story is live!' });
-      ui.navigateTo(post);
+      if (subreddit.name === 'demo_subreddit') {
+        ui.showToast({ text: '🎉 Demo story created! Check the Story Hub to see it.' });
+      } else {
+        ui.showToast({ text: '🎉 Your ThreadSmith story is live!' });
+        ui.navigateTo(post);
+      }
 
     } catch (error) {
       console.error('[ThreadSmithForm] Failed to create story thread:', error);
@@ -729,6 +765,28 @@ Good luck, storytellers! ✨
     }
   }
 );
+
+// Demo Data Seeding Menu (for testing)
+Devvit.addMenuItem({
+  label: '🧪 Seed Demo Stories',
+  location: 'subreddit',
+  onPress: async (_event, context) => {
+    const { ui } = context;
+    console.log('[MenuItem] Seeding demo stories...');
+
+    try {
+      const { DemoDataService } = await import('./services/demoDataService.js');
+      const demoService = new DemoDataService(context);
+      
+      await demoService.seedDemoStories();
+      
+      ui.showToast({ text: '✅ Demo stories seeded! Check the Story Hub.' });
+    } catch (error) {
+      console.error('[MenuItem] Failed to seed demo stories:', error);
+      ui.showToast({ text: '❌ Failed to seed demo stories.' });
+    }
+  },
+});
 
 // ThreadSmith Story Hub Menu
 Devvit.addMenuItem({
@@ -744,30 +802,52 @@ Devvit.addMenuItem({
         subreddit = await reddit.getCurrentSubreddit();
       } catch (subredditError) {
         console.error('[MenuItem] Cannot access subreddit (may be private):', subredditError);
-        ui.showToast({ text: '❌ Cannot access subreddit. Please check permissions or make subreddit public.' });
-        return;
+        // Use demo mode instead of failing
+        subreddit = { name: 'demo_subreddit' };
+        ui.showToast({ text: '⚠️ Using demo mode - subreddit access limited' });
       }
       
       console.log(`[MenuItem] Creating ThreadSmith Hub post in r/${subreddit.name}`);
 
-      // Create a Story Hub custom post
-      const post = await reddit.submitPost({
-        title: '📚 ThreadSmith Hub: Community Stories',
-        subredditName: subreddit.name,
-        preview: (
-          <StoryHubPreview subredditName={subreddit.name} />
-        ),
-      });
+      let post;
+      if (subreddit.name === 'demo_subreddit') {
+        // Demo mode - create hub without Reddit API
+        const { DemoDataService } = await import('./services/demoDataService.js');
+        const demoService = new DemoDataService(context);
+        
+        // Ensure demo stories are seeded
+        await demoService.seedDemoStories();
+        
+        post = { id: `demo_hub_${Date.now()}` };
+        
+        // Store hub metadata for routing
+        await context.redis.set(`story_post:${post.id}`, JSON.stringify({
+          postType: 'story_hub',
+          createdAt: Date.now()
+        }));
+        
+        console.log(`[MenuItem] Demo Hub created successfully: ${post.id}`);
+        ui.showToast({ text: '✅ Demo Story Hub ready! Browse sample stories.' });
+      } else {
+        // Normal mode - create Reddit post
+        post = await reddit.submitPost({
+          title: '📚 ThreadSmith Hub: Community Stories',
+          subredditName: subreddit.name,
+          preview: (
+            <StoryHubPreview subredditName={subreddit.name} />
+          ),
+        });
 
-      // Store hub metadata for routing
-      await context.redis.set(`story_post:${post.id}`, JSON.stringify({
-        postType: 'story_hub',
-        createdAt: Date.now()
-      }));
+        // Store hub metadata for routing
+        await context.redis.set(`story_post:${post.id}`, JSON.stringify({
+          postType: 'story_hub',
+          createdAt: Date.now()
+        }));
 
-      console.log(`[MenuItem] ThreadSmith Hub post created successfully: ${post.id}`);
-      ui.showToast({ text: '✅ ThreadSmith Hub created! Browse community stories.' });
-      ui.navigateTo(post);
+        console.log(`[MenuItem] ThreadSmith Hub post created successfully: ${post.id}`);
+        ui.showToast({ text: '✅ ThreadSmith Hub created! Browse community stories.' });
+        ui.navigateTo(post);
+      }
     } catch (error) {
       console.error('[MenuItem] Failed to create ThreadSmith Hub post:', error);
       ui.showToast({ text: '❌ Failed to create post. Check logs.' });

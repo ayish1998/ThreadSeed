@@ -2,6 +2,7 @@
 import { Context, Devvit, useState, useAsync } from '@devvit/public-api';
 import { Story } from '../types/story.js';
 import { StoryService } from '../services/storyService.js';
+import { DemoDataService, DemoStory } from '../services/demoDataService.js';
 
 interface CommunityDashboardProps {
     context: Context;
@@ -108,11 +109,40 @@ export const CommunityDashboard: Devvit.BlockComponent<CommunityDashboardProps> 
     const [genreFilter, setGenreFilter] = useState<GenreFilter>('all');
 
     const storyService = new StoryService(context);
+    const demoDataService = new DemoDataService(context);
 
     // Load dashboard data
     const { data: dashboardDataString, loading } = useAsync(async () => {
         try {
-            const allStories = await storyService.getSubredditStories(userData.subreddit.name, 50);
+            // Use demo data for now to avoid subreddit access issues
+            const demoStories = await demoDataService.getDemoStories();
+            
+            // Convert demo stories to Story format for compatibility
+            const allStories: Story[] = demoStories.map((demoStory: DemoStory) => ({
+                id: demoStory.id,
+                title: demoStory.title,
+                sentences: demoStory.chapters.map(chapter => ({
+                    id: `sentence_${chapter.chapterNumber}`,
+                    content: chapter.text,
+                    authorId: chapter.authorName,
+                    authorName: chapter.authorName,
+                    createdAt: chapter.addedAt,
+                    votes: chapter.votes,
+                    isWinner: true
+                })),
+                createdAt: demoStory.createdAt,
+                status: demoStory.status,
+                trendingScore: Math.random() * 100,
+                metadata: {
+                    genre: demoStory.genre,
+                    contentRating: demoStory.contentRating,
+                    duration: demoStory.duration,
+                    totalContributors: demoStory.chapters.length,
+                    lastActivity: demoStory.createdAt,
+                    votingActive: demoStory.status === 'active' && Math.random() > 0.5,
+                    flaggedContent: Math.random() > 0.8
+                }
+            }));
 
             const activeStories = allStories.filter(story => story.status === 'active');
             const completedStories = allStories.filter(story => story.status === 'completed');

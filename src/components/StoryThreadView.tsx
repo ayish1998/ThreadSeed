@@ -45,8 +45,49 @@ export const StoryThreadView: Devvit.BlockComponent<StoryThreadViewProps> = ({ c
     // Load story metadata from the current post
     const { data: storyDataString, loading } = useAsync(async () => {
         try {
-            const post = await context.reddit.getPostById(context.postId || '');
-            console.log(`[StoryThreadView] Loading story data for post: ${post.id}`);
+            const postId = context.postId || '';
+            console.log(`[StoryThreadView] Loading story data for post: ${postId}`);
+            
+            // Check if this is a demo story
+            if (postId.startsWith('demo_story_')) {
+                const { DemoDataService } = await import('../services/demoDataService.js');
+                const demoService = new DemoDataService(context);
+                const demoStory = await demoService.getDemoStory(postId);
+                
+                if (demoStory) {
+                    const storyData: StoryMetadata = {
+                        title: demoStory.title,
+                        genre: demoStory.genre,
+                        opening: demoStory.opening,
+                        duration: demoStory.duration,
+                        wordLimit: '300-500',
+                        createdBy: 'Demo User',
+                        createdAt: demoStory.createdAt,
+                        status: demoStory.status,
+                        contributors: demoStory.chapters.length,
+                        chapters: demoStory.currentChapter,
+                        totalWords: demoStory.chapters.reduce((sum, ch) => sum + ch.wordCount, 0),
+                        timeRemaining: demoStory.status === 'active' ? 'Demo Mode' : 'Completed',
+                        votingActive: demoStory.status === 'active',
+                        submissionCount: Math.floor(Math.random() * 5) + 1,
+                        leadingContributor: demoStory.chapters.length > 0 ? demoStory.chapters[demoStory.chapters.length - 1].authorName : undefined,
+                        leadingVotes: demoStory.chapters.length > 0 ? demoStory.chapters[demoStory.chapters.length - 1].votes : undefined,
+                        votingEndsIn: 'Demo Mode',
+                        lastWinner: demoStory.chapters.length > 0 ? {
+                            name: demoStory.chapters[demoStory.chapters.length - 1].authorName,
+                            votes: demoStory.chapters[demoStory.chapters.length - 1].votes,
+                            chapter: demoStory.chapters[demoStory.chapters.length - 1].chapterNumber
+                        } : undefined,
+                        isCompleted: demoStory.status === 'completed',
+                        canDownloadPDF: demoStory.status === 'completed'
+                    };
+                    
+                    return JSON.stringify(storyData);
+                }
+            }
+            
+            // Normal Reddit post handling
+            const post = await context.reddit.getPostById(postId);
 
             // Get story metadata from Redis
             const metadataString = await context.redis.get(`story_post:${post.id}`);
